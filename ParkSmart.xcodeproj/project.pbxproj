@@ -6,6 +6,14 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		1211F9FB2D5B8C0B0027E8EC /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 1211F9FA2D5B8C0B0027E8EC /* FirebaseAnalytics */; };
+		1211F9FD2D5B8C0B0027E8EC /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 1211F9FC2D5B8C0B0027E8EC /* FirebaseAuth */; };
+		1211F9FF2D5B8C0B0027E8EC /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 1211F9FE2D5B8C0B0027E8EC /* FirebaseFirestore */; };
+		1211FA012D5B8C0B0027E8EC /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 1211FA002D5B8C0B0027E8EC /* FirebaseFunctions */; };
+		1211FA032D5B8C0B0027E8EC /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 1211FA022D5B8C0B0027E8EC /* FirebaseMessaging */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		1211F9E82D5B8ACA0027E8EC /* ParkSmart.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ParkSmart.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +31,11 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1211F9FB2D5B8C0B0027E8EC /* FirebaseAnalytics in Frameworks */,
+				1211F9FD2D5B8C0B0027E8EC /* FirebaseAuth in Frameworks */,
+				1211FA032D5B8C0B0027E8EC /* FirebaseMessaging in Frameworks */,
+				1211F9FF2D5B8C0B0027E8EC /* FirebaseFirestore in Frameworks */,
+				1211FA012D5B8C0B0027E8EC /* FirebaseFunctions in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +78,11 @@
 			);
 			name = ParkSmart;
 			packageProductDependencies = (
+				1211F9FA2D5B8C0B0027E8EC /* FirebaseAnalytics */,
+				1211F9FC2D5B8C0B0027E8EC /* FirebaseAuth */,
+				1211F9FE2D5B8C0B0027E8EC /* FirebaseFirestore */,
+				1211FA002D5B8C0B0027E8EC /* FirebaseFunctions */,
+				1211FA022D5B8C0B0027E8EC /* FirebaseMessaging */,
 			);
 			productName = ParkSmart;
 			productReference = 1211F9E82D5B8ACA0027E8EC /* ParkSmart.app */;
@@ -94,6 +112,9 @@
 			);
 			mainGroup = 1211F9DF2D5B8ACA0027E8EC;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1211F9F92D5B8C0B0027E8EC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1211F9E92D5B8ACA0027E8EC /* Products */;
 			projectDirPath = "";
@@ -324,6 +345,45 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		1211F9F92D5B8C0B0027E8EC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.8.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1211F9FA2D5B8C0B0027E8EC /* FirebaseAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1211F9F92D5B8C0B0027E8EC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalytics;
+		};
+		1211F9FC2D5B8C0B0027E8EC /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1211F9F92D5B8C0B0027E8EC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		1211F9FE2D5B8C0B0027E8EC /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1211F9F92D5B8C0B0027E8EC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		1211FA002D5B8C0B0027E8EC /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1211F9F92D5B8C0B0027E8EC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
+		};
+		1211FA022D5B8C0B0027E8EC /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1211F9F92D5B8C0B0027E8EC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 1211F9E02D5B8ACA0027E8EC /* Project object */;
 }
