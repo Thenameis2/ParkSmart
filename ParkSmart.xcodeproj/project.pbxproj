@@ -12,15 +12,29 @@
 		1211F9FF2D5B8C0B0027E8EC /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 1211F9FE2D5B8C0B0027E8EC /* FirebaseFirestore */; };
 		1211FA012D5B8C0B0027E8EC /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 1211FA002D5B8C0B0027E8EC /* FirebaseFunctions */; };
 		1211FA032D5B8C0B0027E8EC /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 1211FA022D5B8C0B0027E8EC /* FirebaseMessaging */; };
+		1211FD652D7516C90027E8EC /* MapboxNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = 1211FD642D7516C90027E8EC /* MapboxNavigation */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		1211F9E82D5B8ACA0027E8EC /* ParkSmart.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ParkSmart.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		1211FBA42D6782AA0027E8EC /* Exceptions for "ParkSmart" folder in "ParkSmart" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 1211F9E72D5B8ACA0027E8EC /* ParkSmart */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		1211F9EA2D5B8ACA0027E8EC /* ParkSmart */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				1211FBA42D6782AA0027E8EC /* Exceptions for "ParkSmart" folder in "ParkSmart" target */,
+			);
 			path = ParkSmart;
 			sourceTree = "<group>";
 		};
@@ -32,6 +46,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1211F9FB2D5B8C0B0027E8EC /* FirebaseAnalytics in Frameworks */,
+				1211FD652D7516C90027E8EC /* MapboxNavigation in Frameworks */,
 				1211F9FD2D5B8C0B0027E8EC /* FirebaseAuth in Frameworks */,
 				1211FA032D5B8C0B0027E8EC /* FirebaseMessaging in Frameworks */,
 				1211F9FF2D5B8C0B0027E8EC /* FirebaseFirestore in Frameworks */,
@@ -83,6 +98,7 @@
 				1211F9FE2D5B8C0B0027E8EC /* FirebaseFirestore */,
 				1211FA002D5B8C0B0027E8EC /* FirebaseFunctions */,
 				1211FA022D5B8C0B0027E8EC /* FirebaseMessaging */,
+				1211FD642D7516C90027E8EC /* MapboxNavigation */,
 			);
 			productName = ParkSmart;
 			productReference = 1211F9E82D5B8ACA0027E8EC /* ParkSmart.app */;
@@ -114,6 +130,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				1211F9F92D5B8C0B0027E8EC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				1211FD632D7516C90027E8EC /* XCRemoteSwiftPackageReference "maplibre-navigation-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1211F9E92D5B8ACA0027E8EC /* Products */;
@@ -276,6 +293,8 @@
 				DEVELOPMENT_TEAM = 9PL9JAVL6U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ParkSmart/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "to show parking spots availaie";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -305,6 +324,8 @@
 				DEVELOPMENT_TEAM = 9PL9JAVL6U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ParkSmart/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "to show parking spots availaie";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -355,6 +376,14 @@
 				minimumVersion = 11.8.1;
 			};
 		};
+		1211FD632D7516C90027E8EC /* XCRemoteSwiftPackageReference "maplibre-navigation-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/maplibre/maplibre-navigation-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -382,6 +411,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1211F9F92D5B8C0B0027E8EC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseMessaging;
+		};
+		1211FD642D7516C90027E8EC /* MapboxNavigation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1211FD632D7516C90027E8EC /* XCRemoteSwiftPackageReference "maplibre-navigation-ios" */;
+			productName = MapboxNavigation;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
