@@ -559,10 +559,13 @@ struct TurnByTurnNavigationView: View {
     @StateObject private var navigationManager = NavigationManager()
     @State private var mapView: MKMapView?
     @State private var showEndNavigationAlert = false
+    @State private var showParkingAssistanceAlert = false
+    @State private var showParkingSpotList = false
     
     // Store the initial route and create a state variable for the current route
     private let initialRoute: MKRoute
     @State private var currentRoute: MKRoute
+    @State private var selectedParkingSpot: ParkingSpot?
     
     init(route: MKRoute) {
         self.initialRoute = route
@@ -576,7 +579,8 @@ struct TurnByTurnNavigationView: View {
             NavigationMapView(route: currentRoute,
                               userLocation: navigationManager.currentLocation,
                               followsUserLocation: true,
-                              mapViewStore: $mapView)
+                              mapViewStore: $mapView,
+                              parkingSpots: showParkingSpotList ? navigationManager.availableParkingSpots : [])
                 .edgesIgnoringSafeArea(.all)
             
             VStack {
@@ -589,15 +593,36 @@ struct TurnByTurnNavigationView: View {
                 
                 Spacer()
                 
-                InstructionPanel(
-                    currentInstruction: navigationManager.currentInstruction,
-                    nextInstruction: navigationManager.nextInstruction,
-                    distanceToNextTurn: navigationManager.distanceToNextManeuver
-                )
+                if showParkingSpotList {
+                    ParkingSpotListView(
+                        parkingSpots: navigationManager.availableParkingSpots,
+                        isLoading: navigationManager.isLoadingParkingSpots,
+                        onSelect: { spot in
+                            selectedParkingSpot = spot
+                            navigationManager.navigateToParkingSpot(spot)
+                            showParkingSpotList = false
+                        },
+                        onCancel: {
+                            showParkingSpotList = false
+                        },
+                        navigationManager: navigationManager
+                    )
+                    .transition(.move(edge: .bottom))
+                } else {
+                    InstructionPanel(
+                        currentInstruction: navigationManager.currentInstruction,
+                        nextInstruction: navigationManager.nextInstruction,
+                        distanceToNextTurn: navigationManager.distanceToNextManeuver
+                    )
+                }
             }
         }
         .onAppear {
             navigationManager.startNavigation(for: initialRoute)
+            // Register for the approaching destination notification
+            navigationManager.onApproachingDestination = {
+                showParkingAssistanceAlert = true
+            }
         }
         .onChange(of: navigationManager.routeRecalculated) { recalculated in
             if recalculated, let newRoute = navigationManager.route {
@@ -611,6 +636,15 @@ struct TurnByTurnNavigationView: View {
                 dismiss()
             }
             Button("Continue", role: .cancel) {}
+        }
+        .alert("You're almost at your destination", isPresented: $showParkingAssistanceAlert) {
+            Button("Find parking", action: {
+                navigationManager.findParkingSpots()
+                showParkingSpotList = true
+            })
+            Button("Continue to destination", role: .cancel) {}
+        } message: {
+            Text("Would you like to find an available parking space nearby?")
         }
     }
     
@@ -627,13 +661,281 @@ struct TurnByTurnNavigationView: View {
     }
 }
 
+// Model for Parking Spots
+import CoreLocation
 
+struct ParkingSpot: Identifiable {
+    let id = UUID()  // Unique identifier
+    let coordinate: CLLocationCoordinate2D
+    let name: String
+    let available: Bool
+    let distance: Double
+    let firebaseId: String?
+
+    init(coordinate: CLLocationCoordinate2D, name: String, available: Bool, distance: Double, firebaseId: String?) {
+        self.coordinate = coordinate
+        self.name = name
+        self.available = available
+        self.distance = distance
+        self.firebaseId = firebaseId
+    }
+}
+
+extension ParkingSpot {
+    var formattedDistance: String {
+        String(format: "%.2f meters", distance)
+    }
+}
+
+
+// Parking Spot List View
+// Enhanced Parking Spot List View with loading state and reservation
+struct ParkingSpotListView: View {
+    let parkingSpots: [ParkingSpot]
+    let isLoading: Bool
+    let onSelect: (ParkingSpot) -> Void
+    let onCancel: () -> Void
+    @State private var reservingSpot: String? = nil
+    @ObservedObject var navigationManager: NavigationManager
+    
+    var body: some View {
+        VStack {
+            HStack {
+                Text("Available Parking")
+                    .font(.headline)
+                Spacer()
+                Button(action: onCancel) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.gray)
+                }
+            }
+            .padding(.horizontal)
+            
+            if isLoading {
+                VStack {
+                    ProgressView()
+                        .padding()
+                    Text("Searching for parking...")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(height: 200)
+            } else if parkingSpots.filter({ $0.available }).isEmpty {
+                VStack {
+                    Image(systemName: "car.fill")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary)
+                        .padding()
+                    Text("No available parking spots found nearby")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(height: 200)
+            } else {
+                List {
+                    ForEach(parkingSpots.filter { $0.available }) { spot in
+                        Button(action: {
+                            reservingSpot = spot.id.uuidString
+                            navigationManager.reserveParkingSpot(spot) { success in
+                                if success {
+                                    onSelect(spot)
+                                }
+                                reservingSpot = nil
+                            }
+                        }) {
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(spot.name)
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                    Text("Available")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                }
+                                
+                                Spacer()
+                                
+                                if reservingSpot == spot.id.uuidString {
+                                    ProgressView()
+                                        .scaleEffect(0.7)
+                                } else {
+                                    Text(spot.formattedDistance)
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        .disabled(reservingSpot != nil)
+                    }
+                }
+                .listStyle(InsetGroupedListStyle())
+                .frame(height: 250)
+            }
+        }
+        .padding(.bottom)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(radius: 5)
+        .padding()
+    }
+}
+
+// Enhanced Navigation Map View to display parking spots
+struct NavigationMapView: UIViewRepresentable {
+    let route: MKRoute
+    var userLocation: CLLocation?
+    var followsUserLocation: Bool
+    @Binding var mapViewStore: MKMapView?
+    var parkingSpots: [ParkingSpot] = []
+
+    func makeUIView(context: Context) -> MKMapView {
+        let mapView = MKMapView()
+        mapView.delegate = context.coordinator
+        mapView.showsUserLocation = true
+        mapView.userTrackingMode = followsUserLocation ? .followWithHeading : .none
+
+        // Configure camera for navigation
+        let camera = MKMapCamera()
+        camera.pitch = 60
+        camera.altitude = 200
+        mapView.camera = camera
+
+        // Store the mapView reference
+        context.coordinator.setMapView(mapView)
+
+        return mapView
+    }
+
+    func updateUIView(_ mapView: MKMapView, context: Context) {
+        // Clear existing overlays and annotations except user location
+        mapView.removeOverlays(mapView.overlays)
+        let existingAnnotations = mapView.annotations.filter { !($0 is MKUserLocation) }
+        mapView.removeAnnotations(existingAnnotations)
+
+        // Add route overlay
+        mapView.addOverlay(route.polyline)
+        
+        // Add parking spot annotations
+        for spot in parkingSpots {
+            let annotation = ParkingSpotAnnotation(
+                coordinate: spot.coordinate,
+                title: spot.name,
+                subtitle: spot.available ? "Available" : "Occupied",
+                isAvailable: spot.available
+            )
+            mapView.addAnnotation(annotation)
+        }
+
+        if followsUserLocation, let location = userLocation {
+            // Adjust camera to follow user
+            let camera = mapView.camera
+            camera.centerCoordinate = location.coordinate
+            camera.heading = location.course
+            mapView.setCamera(camera, animated: true)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, MKMapViewDelegate {
+        var parent: NavigationMapView
+
+        init(_ parent: NavigationMapView) {
+            self.parent = parent
+            super.init()
+        }
+
+        func setMapView(_ mapView: MKMapView) {
+            DispatchQueue.main.async {
+                self.parent.mapViewStore = mapView
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let polyline = overlay as? MKPolyline {
+                let renderer = MKPolylineRenderer(polyline: polyline)
+                renderer.strokeColor = .blue
+                renderer.lineWidth = 5
+                return renderer
+            }
+            return MKOverlayRenderer()
+        }
+        
+        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            // Don't customize user location annotation
+            if annotation is MKUserLocation {
+                return nil
+            }
+            
+            if let parkingAnnotation = annotation as? ParkingSpotAnnotation {
+                let identifier = "parkingSpot"
+                var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
+                
+                if annotationView == nil {
+                    annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                    annotationView?.canShowCallout = true
+                } else {
+                    annotationView?.annotation = annotation
+                }
+                
+                // Customize based on availability
+                annotationView?.markerTintColor = parkingAnnotation.isAvailable ? .green : .red
+                annotationView?.glyphImage = UIImage(systemName: "car.fill")
+                return annotationView
+            }
+            
+            // For destination and other annotations
+            let identifier = "destination"
+            var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+            
+            if annotationView == nil {
+                annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                annotationView?.canShowCallout = true
+            } else {
+                annotationView?.annotation = annotation
+            }
+            
+            return annotationView
+        }
+    }
+}
+
+// Custom annotation for parking spots
+class ParkingSpotAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let title: String?
+    let subtitle: String?
+    let isAvailable: Bool
+    
+    init(coordinate: CLLocationCoordinate2D, title: String?, subtitle: String?, isAvailable: Bool) {
+        self.coordinate = coordinate
+        self.title = title
+        self.subtitle = subtitle
+        self.isAvailable = isAvailable
+        super.init()
+    }
+}
+
+// Enhanced Navigation Manager with Parking functionality
+import MapKit
+import CoreLocation
+import Combine
+import FirebaseFirestore
+
+import FirebaseAuth
+
+// Enhanced Navigation Manager with Firebase Parking functionality
 class NavigationManager: NSObject, ObservableObject {
     private var locationManager: CLLocationManager
     private var internalRoute: MKRoute?
     private var currentStepIndex: Int = 0
     private var navigationStartTime: Date?
     private var destinationCoordinate: CLLocationCoordinate2D?
+    private let destinationThreshold: Double = 200 // meters
+    private var hasNotifiedApproaching = false
+    public let db = Firestore.firestore()
     
     @Published var currentLocation: CLLocation?
     @Published var remainingDistance: Double = 0
@@ -642,6 +944,11 @@ class NavigationManager: NSObject, ObservableObject {
     @Published var nextInstruction: String = ""
     @Published var distanceToNextManeuver: Double = 0
     @Published var routeRecalculated: Bool = false
+    @Published var availableParkingSpots: [ParkingSpot] = []
+    @Published var isLoadingParkingSpots: Bool = false
+    
+    // Callback for approaching destination
+    var onApproachingDestination: (() -> Void)?
     
     // Public getter for route to avoid naming conflict
     var route: MKRoute? {
@@ -667,6 +974,7 @@ class NavigationManager: NSObject, ObservableObject {
         navigationStartTime = Date()
         currentStepIndex = 0
         locationManager.startUpdatingLocation()
+        hasNotifiedApproaching = false
         
         // Initialize navigation values immediately
         destinationCoordinate = route.steps.last?.polyline.coordinates.last
@@ -693,6 +1001,219 @@ class NavigationManager: NSObject, ObservableObject {
         internalRoute = nil
         navigationStartTime = nil
         destinationCoordinate = nil
+        hasNotifiedApproaching = false
+    }
+    
+    // Fetch parking spots from Firebase
+    func findParkingSpots() {
+        guard let destination = destinationCoordinate else { return }
+        
+        // Clear previous spots and set loading state
+        availableParkingSpots = []
+        isLoadingParkingSpots = true
+        
+        // Search for parking spots within a radius of the destination
+        let radius = 500.0 // meters
+        
+        // Convert the radius to degrees latitude/longitude for the query
+        // This is a rough approximation that works for small distances
+        let latDelta = radius / 111000 // approx meters per degree latitude
+        let lngDelta = radius / (111000 * cos(destination.latitude * Double.pi / 180))
+        
+        let minLat = destination.latitude - latDelta
+        let maxLat = destination.latitude + latDelta
+        let minLng = destination.longitude - lngDelta
+        let maxLng = destination.longitude + lngDelta
+        
+        // Query Firestore for parking spots within the bounding box
+        db.collection("parkingSpots")
+            .whereField("latitude", isGreaterThanOrEqualTo: minLat)
+            .whereField("latitude", isLessThanOrEqualTo: maxLat)
+            .getDocuments { [weak self] (snapshot, error) in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("Error getting parking spots: \(error.localizedDescription)")
+                    self.isLoadingParkingSpots = false
+                    return
+                }
+                
+                var spots: [ParkingSpot] = []
+                
+                for document in snapshot?.documents ?? [] {
+                    do {
+                        if let data = document.data() as? [String: Any],
+                           let latitude = data["latitude"] as? Double,
+                           let longitude = data["longitude"] as? Double,
+                           let name = data["name"] as? String,
+                           let available = data["available"] as? Bool {
+                            
+                            // Filter by longitude here (Firestore can only query on one range at a time)
+                            if longitude >= minLng && longitude <= maxLng {
+                                let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                                let distance = self.calculateDistance(from: destination, to: coordinate)
+                                
+                                let spot = ParkingSpot(
+                                    coordinate: coordinate,
+                                    name: name,
+                                    available: available,
+                                    distance: distance,
+                                    firebaseId: document.documentID
+                                )
+                                
+                                spots.append(spot)
+                            }
+                        }
+                    } catch {
+                        print("Error decoding parking spot: \(error.localizedDescription)")
+                    }
+                }
+                
+                // Sort by distance
+                spots.sort { $0.distance < $1.distance }
+                
+                DispatchQueue.main.async {
+                    self.availableParkingSpots = spots
+                    self.isLoadingParkingSpots = false
+                }
+            }
+    }
+    
+    // Reserve the parking spot in Firebase
+    func reserveParkingSpot(_ spot: ParkingSpot, completion: @escaping (Bool) -> Void) {
+        guard let firebaseId = spot.firebaseId else {
+            completion(false)
+            return
+        }
+        
+        // Update the spot availability in Firebase
+        db.collection("parkingSpots").document(firebaseId).updateData([
+            "available": false,
+            "reservedAt": FieldValue.serverTimestamp(),
+            "reservedBy": Auth.auth().currentUser?.uid ?? "anonymous"
+        ]) { error in
+            if let error = error {
+                print("Error reserving parking spot: \(error.localizedDescription)")
+                completion(false)
+                return
+            }
+            
+            completion(true)
+        }
+    }
+    
+    // Navigate to selected parking spot
+    func navigateToParkingSpot(_ spot: ParkingSpot) {
+        guard let userLocation = currentLocation else { return }
+        
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: userLocation.coordinate))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: spot.coordinate))
+        request.transportType = .automobile
+        
+        MKDirections(request: request).calculate { [weak self] response, error in
+            if let route = response?.routes.first {
+                DispatchQueue.main.async {
+                    self?.internalRoute = route
+                    self?.currentStepIndex = 0
+                    self?.destinationCoordinate = spot.coordinate
+                    self?.hasNotifiedApproaching = false
+                    
+                    if let firstStep = route.steps.first {
+                        self?.currentInstruction = firstStep.instructions
+                        self?.nextInstruction = route.steps.count > 1 ?
+                            route.steps[1].instructions : "Arrive at parking spot"
+                    }
+                    
+                    // Update remaining distance and time
+                    self?.remainingDistance = route.distance
+                    self?.remainingTime = route.expectedTravelTime
+                    
+                    // Notify UI that route has been recalculated
+                    self?.routeRecalculated = true
+                    
+                    // Reset flag after a short delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        self?.routeRecalculated = false
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - CLLocationManagerDelegate
+extension NavigationManager: CLLocationManagerDelegate {
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last,
+              let route = internalRoute else { return }
+        
+        currentLocation = location
+        
+        // Update navigation progress
+        updateNavigationProgress(at: location, for: route)
+        
+        // Check if approaching destination
+        if !hasNotifiedApproaching,
+           let destinationCoord = destinationCoordinate,
+           calculateDistance(from: location.coordinate, to: destinationCoord) <= destinationThreshold {
+            hasNotifiedApproaching = true
+            DispatchQueue.main.async {
+                self.onApproachingDestination?()
+            }
+        }
+    }
+    
+    private func updateNavigationProgress(at location: CLLocation, for route: MKRoute) {
+        let routeCoordinates = route.polyline.coordinates
+        
+        // Find closest point on route
+        if let (closestPoint, distance) = findClosestPoint(to: location.coordinate, on: routeCoordinates) {
+            // Check if off route (more than 50 meters from route)
+            if distance > 50 {
+                // Request route recalculation
+                recalculateRoute(from: location)
+                return
+            }
+            
+            // Update remaining distance and time
+            updateRemainingNavigationInfo(from: closestPoint)
+            
+            // Update current step if needed
+            updateCurrentStep(at: location)
+        }
+    }
+    
+    private func findClosestPoint(to point: CLLocationCoordinate2D, on route: [CLLocationCoordinate2D]) -> (CLLocationCoordinate2D, Double)? {
+        var closestPoint = route[0]
+        var minDistance = Double.infinity
+        
+        for coordinate in route {
+            let distance = calculateDistance(from: point, to: coordinate)
+            if distance < minDistance {
+                minDistance = distance
+                closestPoint = coordinate
+            }
+        }
+        
+        return (closestPoint, minDistance)
+    }
+    
+    func calculateDistance(from point1: CLLocationCoordinate2D, to point2: CLLocationCoordinate2D) -> Double {
+        let location1 = CLLocation(latitude: point1.latitude, longitude: point1.longitude)
+        let location2 = CLLocation(latitude: point2.latitude, longitude: point2.longitude)
+        return location1.distance(from: location2)
+    }
+    
+    private func updateRemainingNavigationInfo(from currentPoint: CLLocationCoordinate2D) {
+        guard let route = internalRoute else { return }
+        
+        // Calculate remaining distance
+        remainingDistance = calculateRemainingDistance(from: currentPoint)
+        
+        // Update remaining time based on proportion of distance remaining
+        let progressRatio = remainingDistance / route.distance
+        remainingTime = route.expectedTravelTime * progressRatio
     }
     
     private func calculateRemainingDistance(from currentPoint: CLLocationCoordinate2D) -> Double {
@@ -745,71 +1266,6 @@ class NavigationManager: NSObject, ObservableObject {
         }
         
         return remainingDistance
-    }
-}
-
-// MARK: - CLLocationManagerDelegate
-extension NavigationManager: CLLocationManagerDelegate {
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last,
-              let route = internalRoute else { return }
-        
-        currentLocation = location
-        
-        // Update navigation progress
-        updateNavigationProgress(at: location, for: route)
-    }
-    
-    private func updateNavigationProgress(at location: CLLocation, for route: MKRoute) {
-        let routeCoordinates = route.polyline.coordinates
-        
-        // Find closest point on route
-        if let (closestPoint, distance) = findClosestPoint(to: location.coordinate, on: routeCoordinates) {
-            // Check if off route (more than 50 meters from route)
-            if distance > 50 {
-                // Request route recalculation
-                recalculateRoute(from: location)
-                return
-            }
-            
-            // Update remaining distance and time
-            updateRemainingNavigationInfo(from: closestPoint)
-            
-            // Update current step if needed
-            updateCurrentStep(at: location)
-        }
-    }
-    
-    private func findClosestPoint(to point: CLLocationCoordinate2D, on route: [CLLocationCoordinate2D]) -> (CLLocationCoordinate2D, Double)? {
-        var closestPoint = route[0]
-        var minDistance = Double.infinity
-        
-        for coordinate in route {
-            let distance = calculateDistance(from: point, to: coordinate)
-            if distance < minDistance {
-                minDistance = distance
-                closestPoint = coordinate
-            }
-        }
-        
-        return (closestPoint, minDistance)
-    }
-    
-    private func calculateDistance(from point1: CLLocationCoordinate2D, to point2: CLLocationCoordinate2D) -> Double {
-        let location1 = CLLocation(latitude: point1.latitude, longitude: point1.longitude)
-        let location2 = CLLocation(latitude: point2.latitude, longitude: point2.longitude)
-        return location1.distance(from: location2)
-    }
-    
-    private func updateRemainingNavigationInfo(from currentPoint: CLLocationCoordinate2D) {
-        guard let route = internalRoute else { return }
-        
-        // Calculate remaining distance
-        remainingDistance = calculateRemainingDistance(from: currentPoint)
-        
-        // Update remaining time based on proportion of distance remaining
-        let progressRatio = remainingDistance / route.distance
-        remainingTime = route.expectedTravelTime * progressRatio
     }
     
     private func updateCurrentStep(at location: CLLocation) {
@@ -878,130 +1334,190 @@ extension NavigationManager: CLLocationManagerDelegate {
             }
         }
     }
+    
+    // MARK: - Real-time Parking Spot Updates
+    
+    // Set up a real-time listener for parking spot availability changes
+    func setupParkingSpotListener() {
+        guard let destination = destinationCoordinate else { return }
+        
+        // Calculate the bounding box
+        let radius = 500.0 // meters
+        let latDelta = radius / 111000
+        let lngDelta = radius / (111000 * cos(destination.latitude * Double.pi / 180))
+        
+        let minLat = destination.latitude - latDelta
+        let maxLat = destination.latitude + latDelta
+        
+        // Listen for changes to available parking spots
+        db.collection("parkingSpots")
+            .whereField("latitude", isGreaterThanOrEqualTo: minLat)
+            .whereField("latitude", isLessThanOrEqualTo: maxLat)
+            .whereField("available", isEqualTo: true)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self, let snapshot = snapshot else {
+                    if let error = error {
+                        print("Error listening for parking updates: \(error.localizedDescription)")
+                    }
+                    return
+                }
+                
+                // If we already have parking spots, update them
+                if !self.availableParkingSpots.isEmpty {
+                    self.findParkingSpots() // Refresh the list
+                }
+            }
+    }
+    
+    // Release a parking spot (if the user cancels or leaves)
+    func releaseParkingSpot(_ spot: ParkingSpot, completion: @escaping (Bool) -> Void) {
+        guard let firebaseId = spot.firebaseId else {
+            completion(false)
+            return
+        }
+        
+        // Check if the spot was reserved by the current user
+        db.collection("parkingSpots").document(firebaseId).getDocument { [weak self] snapshot, error in
+            guard let data = snapshot?.data(),
+                  let reservedBy = data["reservedBy"] as? String,
+                  reservedBy == Auth.auth().currentUser?.uid || reservedBy == "anonymous" else {
+                completion(false)
+                return
+            }
+            
+            // Update the spot availability in Firebase
+            self?.db.collection("parkingSpots").document(firebaseId).updateData([
+                "available": true,
+                "reservedAt": FieldValue.delete(),
+                "reservedBy": FieldValue.delete()
+            ]) { error in
+                if let error = error {
+                    print("Error releasing parking spot: \(error.localizedDescription)")
+                    completion(false)
+                    return
+                }
+                
+                completion(true)
+            }
+        }
+    }
+    
+    // Search for parking spots with specific criteria
+    func searchParkingWithFilter(maxDistance: Double? = nil,
+                                 preferCovered: Bool = false,
+                                 maxPricePerHour: Double? = nil) {
+        guard let destination = destinationCoordinate else { return }
+        
+        // Clear previous spots and set loading state
+        availableParkingSpots = []
+        isLoadingParkingSpots = true
+        
+        // Search radius
+        let radius = maxDistance ?? 500.0 // Use provided max distance or default to 500m
+        
+        // Convert the radius to degrees latitude/longitude for the query
+        let latDelta = radius / 111000
+        let lngDelta = radius / (111000 * cos(destination.latitude * Double.pi / 180))
+        
+        let minLat = destination.latitude - latDelta
+        let maxLat = destination.latitude + latDelta
+        let minLng = destination.longitude - lngDelta
+        let maxLng = destination.longitude + lngDelta
+        
+        // Start with base query
+        var query: Query = db.collection("parkingSpots")
+            .whereField("latitude", isGreaterThanOrEqualTo: minLat)
+            .whereField("latitude", isLessThanOrEqualTo: maxLat)
+            .whereField("available", isEqualTo: true)
+        
+        // Add covered filter if requested
+        if preferCovered {
+            query = query.whereField("covered", isEqualTo: true)
+        }
+        
+        // Add price filter if requested
+        if let maxPrice = maxPricePerHour {
+            query = query.whereField("pricePerHour", isLessThanOrEqualTo: maxPrice)
+        }
+        
+        // Execute the query
+        query.getDocuments { [weak self] (snapshot, error) in
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("Error searching for parking spots: \(error.localizedDescription)")
+                self.isLoadingParkingSpots = false
+                return
+            }
+            
+            var spots: [ParkingSpot] = []
+            
+            for document in snapshot?.documents ?? [] {
+                do {
+                    if let data = document.data() as? [String: Any],
+                       let latitude = data["latitude"] as? Double,
+                       let longitude = data["longitude"] as? Double,
+                       let name = data["name"] as? String,
+                       let available = data["available"] as? Bool {
+                        
+                        // Filter by longitude here (Firestore can only query on one range at a time)
+                        if longitude >= minLng && longitude <= maxLng {
+                            let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                            let distance = self.calculateDistance(from: destination, to: coordinate)
+                            
+                            // Apply distance filter here, in case maxDistance was provided
+                            if maxDistance == nil || distance <= maxDistance! {
+                                let spot = ParkingSpot(
+                                    coordinate: coordinate,
+                                    name: name,
+                                    available: available,
+                                    distance: distance,
+                                    firebaseId: document.documentID
+                                )
+                                
+                                spots.append(spot)
+                            }
+                        }
+                    }
+                } catch {
+                    print("Error decoding parking spot: \(error.localizedDescription)")
+                }
+            }
+            
+            // Sort by distance
+            spots.sort { $0.distance < $1.distance }
+            
+            DispatchQueue.main.async {
+                self.availableParkingSpots = spots
+                self.isLoadingParkingSpots = false
+            }
+        }
+    }
 }
 
-//extension NavigationManager: CLLocationManagerDelegate {
-//    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-//        guard let location = locations.last,
-//              let route = route else { return }
-//        
-//        currentLocation = location
-//        
-//        // Update navigation progress
-//        updateNavigationProgress(at: location, for: route)
-//    }
-//    
-//    private func updateNavigationProgress(at location: CLLocation, for route: MKRoute) {
-//        let routeCoordinates = route.polyline.coordinates
-//        
-//        // Find closest point on route
-//        if let (closestPoint, distance) = findClosestPoint(to: location.coordinate, on: routeCoordinates) {
-//            // Check if off route (more than 50 meters from route)
-//            if distance > 50 {
-//                // Request route recalculation
-//                recalculateRoute(from: location)
-//                return
-//            }
-//            
-//            // Update remaining distance and time
-//            updateRemainingNavigationInfo(from: closestPoint)
-//            
-//            // Update current step if needed
-//            updateCurrentStep(at: location)
-//        }
-//    }
-//    
-//    private func findClosestPoint(to point: CLLocationCoordinate2D, on route: [CLLocationCoordinate2D]) -> (CLLocationCoordinate2D, Double)? {
-//        var closestPoint = route[0]
-//        var minDistance = Double.infinity
-//        
-//        for coordinate in route {
-//            let distance = calculateDistance(from: point, to: coordinate)
-//            if distance < minDistance {
-//                minDistance = distance
-//                closestPoint = coordinate
-//            }
-//        }
-//        
-//        return (closestPoint, minDistance)
-//    }
-//    
-//    private func calculateDistance(from point1: CLLocationCoordinate2D, to point2: CLLocationCoordinate2D) -> Double {
-//        let location1 = CLLocation(latitude: point1.latitude, longitude: point1.longitude)
-//        let location2 = CLLocation(latitude: point2.latitude, longitude: point2.longitude)
-//        return location1.distance(from: location2)
-//    }
-//    
-//    private func updateRemainingNavigationInfo(from currentPoint: CLLocationCoordinate2D) {
-//        guard let route = route else { return }
-//        
-//        // Calculate remaining distance
-//        remainingDistance = calculateRemainingDistance(from: currentPoint)
-//        
-//        // Update remaining time based on proportion of distance remaining
-//        let progressRatio = remainingDistance / route.distance
-//        remainingTime = route.expectedTravelTime * progressRatio
-//    }
-//    
-//    private func updateCurrentStep(at location: CLLocation) {
-//        guard let route = route else { return }
-//        
-//        let steps = route.steps
-//        if currentStepIndex < steps.count {
-//            let currentStep = steps[currentStepIndex]
-//            
-//            // Check if we've completed the current step
-//            if hasCompletedStep(currentStep, at: location) {
-//                currentStepIndex += 1
-//                
-//                // Update instructions
-//                if currentStepIndex < steps.count {
-//                    currentInstruction = steps[currentStepIndex].instructions
-//                    nextInstruction = currentStepIndex + 1 < steps.count ?
-//                        steps[currentStepIndex + 1].instructions : "Arrive at destination"
-//                }
-//            }
-//            
-//            // Update distance to next maneuver
-//            distanceToNextManeuver = calculateDistance(from: location.coordinate,
-//                                                     to: currentStep.polyline.coordinates.last!)
-//        }
-//    }
-//    
-//    private func hasCompletedStep(_ step: MKRoute.Step, at location: CLLocation) -> Bool {
-//        guard let stepEndPoint = step.polyline.coordinates.last else { return false }
-//        let distanceToStepEnd = calculateDistance(from: location.coordinate, to: stepEndPoint)
-//        return distanceToStepEnd < 20 // Consider step completed when within 20 meters
-//    }
-//    
-//    private func recalculateRoute(from location: CLLocation) {
-//            guard let destinationCoordinate = destinationCoordinate else { return }
-//            
-//            let request = MKDirections.Request()
-//            request.source = MKMapItem(placemark: MKPlacemark(coordinate: location.coordinate))
-//            request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destinationCoordinate))
-//            request.requestsAlternateRoutes = true // Request multiple routes
-//            
-//            MKDirections(request: request).calculate { [weak self] response, error in
-//                if let routes = response?.routes {
-//                    // Find the shortest route by distance
-//                    let shortestRoute = routes.min(by: { $0.distance < $1.distance })
-//                    
-//                    DispatchQueue.main.async {
-//                        if let newRoute = shortestRoute {
-//                            self?.route = newRoute
-//                            self?.currentStepIndex = 0
-//                            if let firstStep = newRoute.steps.first {
-//                                self?.currentInstruction = firstStep.instructions
-//                                self?.nextInstruction = newRoute.steps.count > 1 ?
-//                                    newRoute.steps[1].instructions : "Arrive at destination"
-//                            }
-//                        }
-//                    }
-//                }
-//            }
-//        }
-//}
+// Extension to get coordinates from MKPolyline
+extension MKPolyline {
+    var coordinates: [CLLocationCoordinate2D] {
+        var coords = [CLLocationCoordinate2D](repeating: CLLocationCoordinate2D(), count: pointCount)
+        getCoordinates(&coords, range: NSRange(location: 0, length: pointCount))
+        return coords
+    }
+}
+
+
+
+class DirectionalAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let heading: Double
+    
+    init(coordinate: CLLocationCoordinate2D, heading: Double) {
+        self.coordinate = coordinate
+        self.heading = heading
+        super.init()
+    }
+}
+
+
 
 struct NavigationHeader: View {
     let distance: Double
@@ -1101,100 +1617,5 @@ struct InstructionPanel: View {
             let miles = meters / 1609.34
             return String(format: "%.1f mi", miles)
         }
-    }
-}
-
-import SwiftUI
-import MapKit
-
-struct NavigationMapView: UIViewRepresentable {
-    let route: MKRoute
-    var userLocation: CLLocation?
-    var followsUserLocation: Bool
-    @Binding var mapViewStore: MKMapView?
-
-    func makeUIView(context: Context) -> MKMapView {
-        let mapView = MKMapView()
-        mapView.delegate = context.coordinator
-        mapView.showsUserLocation = true // Show default blue dot
-        mapView.userTrackingMode = followsUserLocation ? .followWithHeading : .none
-
-        // Configure camera for navigation
-        let camera = MKMapCamera()
-        camera.pitch = 60
-        camera.altitude = 200
-        mapView.camera = camera
-
-        // Use coordinator to store the mapView reference
-        context.coordinator.setMapView(mapView)
-
-        return mapView
-    }
-
-    func updateUIView(_ mapView: MKMapView, context: Context) {
-        // Clear existing overlays
-        mapView.removeOverlays(mapView.overlays)
-
-        // Add route overlay
-        mapView.addOverlay(route.polyline)
-
-        if followsUserLocation, let location = userLocation {
-            // Adjust camera to follow user without adding a custom annotation
-            let camera = mapView.camera
-            camera.centerCoordinate = location.coordinate
-            camera.heading = location.course
-            mapView.setCamera(camera, animated: true)
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-
-    class Coordinator: NSObject, MKMapViewDelegate {
-        var parent: NavigationMapView
-
-        init(_ parent: NavigationMapView) {
-            self.parent = parent
-            super.init()
-        }
-
-        func setMapView(_ mapView: MKMapView) {
-            DispatchQueue.main.async {
-                self.parent.mapViewStore = mapView
-            }
-        }
-
-        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            if let polyline = overlay as? MKPolyline {
-                let renderer = MKPolylineRenderer(polyline: polyline)
-                renderer.strokeColor = .blue
-                renderer.lineWidth = 5
-                return renderer
-            }
-            return MKOverlayRenderer()
-        }
-    }
-}
-
-
-class DirectionalAnnotation: NSObject, MKAnnotation {
-    let coordinate: CLLocationCoordinate2D
-    let heading: Double
-    
-    init(coordinate: CLLocationCoordinate2D, heading: Double) {
-        self.coordinate = coordinate
-        self.heading = heading
-        super.init()
-    }
-}
-
-
-
-extension MKPolyline {
-    var coordinates: [CLLocationCoordinate2D] {
-        var coords = [CLLocationCoordinate2D](repeating: CLLocationCoordinate2D(), count: pointCount)
-        getCoordinates(&coords, range: NSRange(location: 0, length: pointCount))
-        return coords
     }
 }
