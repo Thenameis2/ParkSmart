@@ -4,6 +4,8 @@ import MapKit
 import Combine
 import FirebaseFirestore
 import CoreLocation
+import _MapKit_SwiftUI
+import SwiftUICore
 
 enum MapDetails {
     static let startingLocation = CLLocationCoordinate2D(latitude: 37.331516, longitude: -121.891054)
@@ -48,6 +50,12 @@ protocol MapViewModel {
 }
 
 final class MapViewModelImpl: NSObject, ObservableObject, MapViewModel{
+    @Published var parkingSpots: [ParkingSpot] = []
+
+    
+    // Add these properties to your MapViewModelImpl class
+    @Published var mapStyle: MapStyle = .imagery
+    @Published var is3DEnabled: Bool = false
     
     //MARK: Properties
     @Published var mapView: MKMapView = .init()
@@ -59,7 +67,7 @@ final class MapViewModelImpl: NSObject, ObservableObject, MapViewModel{
     
     //MARK: User Location
     @Published var userLocation: CLLocation?
-    
+    private let db = Firestore.firestore()
     //MARK: Final Location
     @Published var pickedLocation: CLLocation?
     @Published var pickedPlaceMark: CLPlacemark?
@@ -111,6 +119,121 @@ final class MapViewModelImpl: NSObject, ObservableObject, MapViewModel{
             self.isCurrentLocationClicked = true
         }
     }
+    
+    func fetchParkingSpots() {
+        let radius: Double = 500.0 // meters
+
+        guard let userLocation = CLLocationManager().location?.coordinate else {
+            return
+        }
+
+        let latDelta = radius / 111000 // approx meters per degree latitude
+        let lngDelta = radius / (111000 * cos(userLocation.latitude * .pi / 180))
+
+        let minLat = userLocation.latitude - latDelta
+        let maxLat = userLocation.latitude + latDelta
+        let minLng = userLocation.longitude - lngDelta
+        let maxLng = userLocation.longitude + lngDelta
+
+        db.collection("parkingSpots")
+            .whereField("latitude", isGreaterThanOrEqualTo: minLat)
+            .whereField("latitude", isLessThanOrEqualTo: maxLat)
+            .getDocuments { [weak self] (snapshot, error) in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("Error getting parking spots: \(error.localizedDescription)")
+                    return
+                }
+
+                var spots: [ParkingSpot] = []
+
+                for document in snapshot?.documents ?? [] {
+                    if let data = document.data() as? [String: Any],
+                       let latitude = data["latitude"] as? Double,
+                       let longitude = data["longitude"] as? Double,
+                       let name = data["name"] as? String,
+                       let available = data["available"] as? Bool {
+
+                        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+
+                        // Calculate distance from the user's location
+                        let location = CLLocation(latitude: latitude, longitude: longitude)
+                        let userLoc = CLLocation(latitude: userLocation.latitude, longitude: userLocation.longitude)
+                        let distance = location.distance(from: userLoc) // distance in meters
+
+                        // Get Firebase document ID
+                        let firebaseId = document.documentID
+
+                        let spot = ParkingSpot(coordinate: coordinate, name: name, available: available, distance: distance, firebaseId: firebaseId)
+
+                        spots.append(spot)
+                    }
+                }
+
+                DispatchQueue.main.async {
+                    self.parkingSpots = spots
+                }
+            }
+    }
+    
+    func countSpotsInLots(parkingSpots: [ParkingSpot], lots: [ParkingLot]) -> [ParkingLot] {
+        var updatedLots = lots
+        
+        for (index, lot) in lots.enumerated() {
+            let spotsInLot = parkingSpots.filter { spot in
+                // Check if the spot is within the polygon
+                isSpotInPolygon(spot: spot.coordinate, polygonCoordinates: lot.coordinates)
+            }
+            
+            let availableSpotsCount = spotsInLot.filter { $0.available }.count
+            updatedLots[index].availableSpots = availableSpotsCount
+            updatedLots[index].totalSpots = spotsInLot.count
+            
+            // Update color based on availability ratio
+            if updatedLots[index].totalSpots > 0 {
+                let ratio = Double(availableSpotsCount) / Double(updatedLots[index].totalSpots)
+                
+                updatedLots[index].color = determineColorForRatio(ratio: ratio)
+            } else {
+                updatedLots[index].color = .gray
+            }
+        }
+        
+        return updatedLots
+    }
+
+    // Helper function to determine color based on ratio
+    func determineColorForRatio(ratio: Double) -> Color {
+        switch ratio {
+        case 0.75...1.0:
+            return .green
+        case 0.5..<0.75:
+            return .yellow
+        case 0.25..<0.5:
+            return .orange
+        default:
+            return .red
+        }
+    }
+
+    // Helper function to check if a spot is within a polygon
+    // Helper function to check if a spot is within a polygon
+
+
+    func isSpotInPolygon(spot: CLLocationCoordinate2D, polygonCoordinates: [CLLocationCoordinate2D]) -> Bool {
+        // Create an MKPolygon with the given coordinates
+        let polygon = MKPolygon(coordinates: polygonCoordinates, count: polygonCoordinates.count)
+        
+        // Convert the spot to MKMapPoint
+        let spotPoint = MKMapPoint(spot)
+        
+        // Check if the polygon intersects with the spot point
+        return polygon.boundingMapRect.contains(spotPoint)
+    }
+
+
+
     
 }
 

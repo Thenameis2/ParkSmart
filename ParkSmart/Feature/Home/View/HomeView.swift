@@ -31,19 +31,6 @@ struct HomeView: View {
                 .environmentObject(sessionService)
                 .environmentObject(groupsViewModel)
 
-            // Search bar overlay at the bottom
-            VStack {
-                Spacer()
-                SearchBar(text: $searchText) {
-                    showNavigationView = true
-                }
-                .padding()
-                .background(.thinMaterial) // Modern blur effect
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .shadow(radius: 5)
-                .padding(.horizontal, 16)
-            }
-           
     
             
         }
@@ -121,8 +108,8 @@ struct HomeView_Previews: PreviewProvider {
 
 struct SearchBar: View {
     @Binding var text: String
-    var onAdd: () -> Void  // Closure for handling the plus button action
-    @State private var showNavigationView = false
+    @State private var showNavigationView = false  // State for navigation view
+    @State private var showAccountView = false  // State for account view
     
     var body: some View {
         HStack {
@@ -131,7 +118,7 @@ struct SearchBar: View {
             
             // Make the entire text field a button
             Button(action: {
-                showNavigationView = true
+                showNavigationView = true  // Show CombinedNavigationView when tapped
             }) {
                 HStack {
                     Text(text.isEmpty ? "Search locations..." : text)
@@ -151,11 +138,7 @@ struct SearchBar: View {
                 }
             }
             
-            Button(action: onAdd) {
-                Image(systemName: "plus.circle.fill")
-                    .foregroundColor(.blue)
-                    .font(.title2)
-            }
+
         }
         .padding(8)
         .background(Color(.systemGray6))
@@ -163,10 +146,12 @@ struct SearchBar: View {
         .fullScreenCover(isPresented: $showNavigationView) {
             CombinedNavigationView(mapViewModel: MapViewModelImpl())
         }
-        
-        
+        .sheet(isPresented: $showAccountView) {
+            AccountView()  // Display AccountView when tapped
+        }
     }
 }
+
 
 
 
@@ -211,6 +196,11 @@ struct CombinedNavigationView: View {
     @State private var isMapReady = false
     @State private var showingTurnByTurnNavigation = false  // New state variable
     
+    // Add these properties to handle initial destination
+      private var initialDestination: CLLocationCoordinate2D?
+      private var destinationName: String?
+      
+    
     struct LocationResult: Identifiable {
         let id = UUID()
         let title: String
@@ -218,9 +208,13 @@ struct CombinedNavigationView: View {
         let coordinate: CLLocationCoordinate2D
     }
     
-    init(mapViewModel: MapViewModelImpl = MapViewModelImpl()) {
-        _mapViewModel = StateObject(wrappedValue: mapViewModel)
-    }
+    init(mapViewModel: MapViewModelImpl = MapViewModelImpl(),
+           initialDestination: CLLocationCoordinate2D? = nil,
+           destinationName: String? = nil) {
+          _mapViewModel = StateObject(wrappedValue: mapViewModel)
+          self.initialDestination = initialDestination
+          self.destinationName = destinationName
+      }
     
     var body: some View {
         ZStack {
@@ -354,12 +348,26 @@ struct CombinedNavigationView: View {
       
         
         .onAppear {
-            locationManager.requestLocationAuthorization()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                isMapReady = true
-                searchForLocations(query: "university")
-            }
-        }
+                    locationManager.requestLocationAuthorization()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        isMapReady = true
+                        
+                        // If we have an initial destination, set it up automatically
+                        if let destination = initialDestination, let name = destinationName {
+                            let result = LocationResult(
+                                title: name,
+                                subtitle: "Parking Lot",
+                                coordinate: destination
+                            )
+                            selectedLocation = result
+                            showingNavigation = true
+                            calculateRoute(to: destination)
+                        } else {
+                            // Default search if no destination provided
+                            searchForLocations(query: "university")
+                        }
+                    }
+                }
 
     
     }
@@ -664,7 +672,10 @@ struct TurnByTurnNavigationView: View {
 // Model for Parking Spots
 import CoreLocation
 
-struct ParkingSpot: Identifiable {
+import Foundation
+import CoreLocation
+
+struct ParkingSpot: Identifiable, Equatable {
     let id = UUID()  // Unique identifier
     let coordinate: CLLocationCoordinate2D
     let name: String
@@ -679,6 +690,11 @@ struct ParkingSpot: Identifiable {
         self.distance = distance
         self.firebaseId = firebaseId
     }
+
+    // Equatable conformance
+    static func ==(lhs: ParkingSpot, rhs: ParkingSpot) -> Bool {
+        return lhs.id == rhs.id
+    }
 }
 
 extension ParkingSpot {
@@ -686,6 +702,7 @@ extension ParkingSpot {
         String(format: "%.2f meters", distance)
     }
 }
+
 
 
 // Parking Spot List View
