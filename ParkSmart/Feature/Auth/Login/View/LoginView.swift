@@ -1,5 +1,3 @@
-
-
 import SwiftUI
 import AuthenticationServices
 
@@ -23,7 +21,7 @@ struct LoginView: View {
                         .frame(width: 100, height: 100)
                         .clipShape(.circle)
                     
-                    Text("TagAuto")
+                    Text("ParkSmart")
                         .font(.largeTitle)
                         .bold()
                 }
@@ -108,8 +106,6 @@ struct LoginView: View {
 
 struct LoginView_Previews: PreviewProvider {
     static var previews: some View {
-        NavigationStack {
-            LoginView()
-        }
+        LoginView()
     }
 }

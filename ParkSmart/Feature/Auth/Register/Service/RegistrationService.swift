@@ -5,11 +5,14 @@ import Combine
 import Firebase
 import FirebaseFirestore
 import FirebaseAuth
+
 enum RegistrationKeys: String {
     case firstName
     case lastName
     case userEmail
+    case points  // Added points case
 }
+
 
 protocol RegistrationService {
     func register(with details: RegistrationDetails) -> AnyPublisher<Void, Error>
@@ -33,9 +36,12 @@ final class RegistrationServiceImpl: RegistrationService {
                             
                             if let uid = res?.user.uid {
                                 
-                                let values = [RegistrationKeys.firstName.rawValue: details.firstName,
-                                              RegistrationKeys.lastName.rawValue: details.lastName,
-                                              RegistrationKeys.userEmail.rawValue: details.email.lowercased()] as [String: Any]
+                                let values = [
+                                    RegistrationKeys.firstName.rawValue: details.firstName,
+                                    RegistrationKeys.lastName.rawValue: details.lastName,
+                                    RegistrationKeys.userEmail.rawValue: details.email.lowercased(),
+                                    RegistrationKeys.points.rawValue: 0 // Use RegistrationKeys for points
+                                ] as [String: Any]
                                 
                                 let db = Firestore.firestore()
                                 db.collection("users").document(uid).setData(values) { err in

@@ -13,27 +13,42 @@
 		1211FA012D5B8C0B0027E8EC /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 1211FA002D5B8C0B0027E8EC /* FirebaseFunctions */; };
 		1211FA032D5B8C0B0027E8EC /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 1211FA022D5B8C0B0027E8EC /* FirebaseMessaging */; };
 		1211FD652D7516C90027E8EC /* MapboxNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = 1211FD642D7516C90027E8EC /* MapboxNavigation */; };
+		12C8A04D2D85D88D00287365 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 12C8A04C2D85D88D00287365 /* StoreKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		1211F9E82D5B8ACA0027E8EC /* ParkSmart.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ParkSmart.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		12C8A04C2D85D88D00287365 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		1211FBA42D6782AA0027E8EC /* Exceptions for "ParkSmart" folder in "ParkSmart" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				a.swift,
 				Info.plist,
+				Phone.swift,
 			);
 			target = 1211F9E72D5B8ACA0027E8EC /* ParkSmart */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		1211FE052D82DA1C0027E8EC /* Exceptions for "ParkSmart" folder in "Copy Bundle Resources" phase from "ParkSmart" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 1211F9E62D5B8ACA0027E8EC /* Resources */;
+			membershipExceptions = (
+				a.swift,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		1211F9EA2D5B8ACA0027E8EC /* ParkSmart */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				1211FBA42D6782AA0027E8EC /* Exceptions for "ParkSmart" folder in "ParkSmart" target */,
+				1211FE052D82DA1C0027E8EC /* Exceptions for "ParkSmart" folder in "Copy Bundle Resources" phase from "ParkSmart" target */,
 			);
 			path = ParkSmart;
 			sourceTree = "<group>";
@@ -46,6 +61,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1211F9FB2D5B8C0B0027E8EC /* FirebaseAnalytics in Frameworks */,
+				12C8A04D2D85D88D00287365 /* StoreKit.framework in Frameworks */,
 				1211FD652D7516C90027E8EC /* MapboxNavigation in Frameworks */,
 				1211F9FD2D5B8C0B0027E8EC /* FirebaseAuth in Frameworks */,
 				1211FA032D5B8C0B0027E8EC /* FirebaseMessaging in Frameworks */,
@@ -61,6 +77,7 @@
 			isa = PBXGroup;
 			children = (
 				1211F9EA2D5B8ACA0027E8EC /* ParkSmart */,
+				12C8A04B2D85D88D00287365 /* Frameworks */,
 				1211F9E92D5B8ACA0027E8EC /* Products */,
 			);
 			sourceTree = "<group>";
@@ -71,6 +88,14 @@
 				1211F9E82D5B8ACA0027E8EC /* ParkSmart.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		12C8A04B2D85D88D00287365 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				12C8A04C2D85D88D00287365 /* StoreKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -287,6 +312,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = ParkSmart/ParkSmart.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"ParkSmart/Preview Content\"";
@@ -323,6 +349,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = ParkSmart/ParkSmart.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"ParkSmart/Preview Content\"";

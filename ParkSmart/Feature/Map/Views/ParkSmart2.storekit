@@ -1,0 +1,120 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "C5FC6C75",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "3734DE07",
+      "localizations" : [
+        {
+          "description" : "Pay .99¢ for 10 points",
+          "displayName" : ".99¢",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.ParkSmart.99cent",
+      "referenceName" : ".99$",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "0BA5C07D",
+      "localizations" : [
+        {
+          "description" : "Pay 4.99$ to get 60 points ",
+          "displayName" : "4.99$",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.ParkSmart.4.99bill",
+      "referenceName" : "4.99$",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "68B4AAD9",
+      "localizations" : [
+        {
+          "description" : "Pay 9.99$ to get 130 points",
+          "displayName" : "9.99$",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.ParkSmart.9.99bill",
+      "referenceName" : "9.99$",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

@@ -26,10 +26,15 @@ struct MapView: View {
     @State private var showGroupsView = false
     @State private var showAccountView = false
     @State private var showAccountMenu = false
+    @State private var showShopView = false
     
     @State private var lotsWithCounts: [ParkingLot] = []
     @State private var selectedParkingLot: ParkingLot? = nil
-        @State private var showLotDetails: Bool = false
+    @State private var showLotDetails: Bool = false
+    
+    // Sheet presentation state
+    @State private var sheetPresented = true
+    @State private var sheetDetent: PresentationDetent = .medium
     
     // Create polygons as MapOverlays for map content builder
     var polygonOverlays: [ParkingLot] {
@@ -147,6 +152,7 @@ struct MapView: View {
             ], color: .red)
         ]
     }
+    
     func calculateCentroid(coordinates: [CLLocationCoordinate2D]) -> CLLocationCoordinate2D {
         var latitude: Double = 0
         var longitude: Double = 0
@@ -175,35 +181,35 @@ struct MapView: View {
         ZStack(alignment: .top) {
             // Combined Map with polygons and annotations
             Map {
-                          // Add all polygon overlays
-                          ForEach(lotsWithCounts) { lot in
-                              MapPolygon(coordinates: lot.coordinates)
-                                  .stroke(lot.color, lineWidth: 1)
-                                  .foregroundStyle(lot.color.opacity(0.3))
-                                  .mapOverlayLevel(level: .aboveRoads)
-                              
-                              // Modified annotation to handle taps
-                              Annotation("\(lot.name) (\(lot.availableSpots)/\(lot.totalSpots))",
-                                        coordinate: calculateCentroid(coordinates: lot.coordinates)) {
-                                  Button {
-                                      selectedParkingLot = lot
-                                      showLotDetails = true
-                                  } label: {
-                                      ZStack {
-                                          Circle()
-                                              .fill(lot.color)
-                                              .frame(width: 20, height: 20)
-                                          Text("\(lot.availableSpots)")
-                                              .font(.caption)
-                                              .foregroundColor(.white)
-                                      }
-                                  }
-                              }
-                          }
-                          
-                          // Add user location
-                          UserAnnotation()
-                      }
+                // Add all polygon overlays
+                ForEach(lotsWithCounts) { lot in
+                    MapPolygon(coordinates: lot.coordinates)
+                        .stroke(lot.color, lineWidth: 1)
+                        .foregroundStyle(lot.color.opacity(0.3))
+                        .mapOverlayLevel(level: .aboveRoads)
+                    
+                    // Modified annotation to handle taps
+                    Annotation("\(lot.name) (\(lot.availableSpots)/\(lot.totalSpots))",
+                              coordinate: calculateCentroid(coordinates: lot.coordinates)) {
+                        Button {
+                            selectedParkingLot = lot
+                            showLotDetails = true
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(lot.color)
+                                    .frame(width: 20, height: 20)
+                                Text("\(lot.availableSpots)")
+                                    .font(.caption)
+                                    .foregroundColor(.white)
+                            }
+                        }
+                    }
+                }
+                
+                // Add user location
+                UserAnnotation()
+            }
             .mapStyle(mapViewModel.mapStyle)
             .mapControls {
                 MapUserLocationButton()
@@ -213,21 +219,21 @@ struct MapView: View {
             .gesture(DragGesture().onChanged({ _ in
                 mapViewModel.isCurrentLocationClicked = false
             }))
-          
             .onAppear {
-                    mapViewModel.getCurrentLocation()
-                    Task {
-                        await mapViewModel.fetchParkingSpots()
-                        // Update the lots with counts after fetching spots
-                        lotsWithCounts = mapViewModel.countSpotsInLots(parkingSpots: mapViewModel.parkingSpots,
-                                                                     lots: polygonOverlays)
-                    }
-                }
-                // Add this to update the counts when parking spots change
-                .onChange(of: mapViewModel.parkingSpots) { _, newSpots in
-                    lotsWithCounts = mapViewModel.countSpotsInLots(parkingSpots: newSpots,
+                mapViewModel.getCurrentLocation()
+                Task {
+                    await mapViewModel.fetchParkingSpots()
+                    // Update the lots with counts after fetching spots
+                    lotsWithCounts = mapViewModel.countSpotsInLots(parkingSpots: mapViewModel.parkingSpots,
                                                                  lots: polygonOverlays)
                 }
+            }
+            // Add this to update the counts when parking spots change
+            .onChange(of: mapViewModel.parkingSpots) { _, newSpots in
+                lotsWithCounts = mapViewModel.countSpotsInLots(parkingSpots: newSpots,
+                                                             lots: polygonOverlays)
+            }
+            .edgesIgnoringSafeArea(.all) // Ensure map fills the entire screen
             
             // Profile & Menu buttons
             HStack {
@@ -276,6 +282,17 @@ struct MapView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .shadow(radius: 2)
                     }
+                    
+                    // Shop Button
+                    Button {
+                        showShopView.toggle()
+                    } label: {
+                        Image(systemName: "cart")
+                            .padding(12)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .shadow(radius: 2)
+                    }
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
                 .padding(.trailing, 5)
@@ -283,29 +300,80 @@ struct MapView: View {
             }
             .padding(.top, 10)
             
-            // Bottom sheet search bar
-            VStack {
-                            Spacer()
-                            
-                            // Parking lot details card
-                            if showLotDetails, let lot = selectedParkingLot {
-                                LotDetailsCard(lot: lot, isShowing: $showLotDetails)
-                                    .transition(.move(edge: .bottom))
-                                    .zIndex(1)
-                            }
-                            
-                            // Bottom sheet search bar
-                            BottomSheetSearchBar(searchText: $searchText, showNavigationView: $showNavigationView)
-                        }
-                        .ignoresSafeArea(.keyboard)
-                        .animation(.spring(), value: showLotDetails)
+            // Parking lot details card - shown above the persistent sheet
+            if showLotDetails, let lot = selectedParkingLot {
+                LotDetailsCard(lot: lot, isShowing: $showLotDetails)
+                    .transition(.move(edge: .bottom))
+                    .zIndex(1)
+            }
         }
+        .ignoresSafeArea(.keyboard)
+        .animation(.spring(), value: showLotDetails)
         .sheet(isPresented: $showAccountView) {
             AccountView()
         }
         .fullScreenCover(isPresented: $showNavigationView) {
             CombinedNavigationView(mapViewModel: MapViewModelImpl())
         }
+        .fullScreenCover(isPresented: $showShopView) {
+            DriverRideRequestsView()
+        }
+        // Persistent sheet for search bar
+        // Then modify your sheet presentation to use the state variable
+        .sheet(isPresented: $sheetPresented, onDismiss: {
+            // Immediately present the sheet again if dismissed
+            sheetPresented = true
+        }) {
+            CombinedNavigationView(mapViewModel: MapViewModelImpl())
+                .presentationDetents([.height(60), .medium, .large], selection: $sheetDetent)
+                .presentationDragIndicator(.visible)
+                .presentationBackgroundInteraction(.enabled)
+                .interactiveDismissDisabled()
+                .onAppear {
+                    // No need to reset this if you want it to start at medium
+                    // Just remove this section or keep it for other initialization
+                }
+        }
+    }
+}
+
+// The existing BottomSheetSearchBar component
+struct BottomSheetSearchBar: View {
+    @Binding var searchText: String
+    @Binding var showNavigationView: Bool
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Search bar
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.gray)
+                
+                TextField("Search for parking", text: $searchText)
+                    .submitLabel(.search)
+                    .onSubmit {
+                        showNavigationView = true
+                    }
+                
+                if !searchText.isEmpty {
+                    Button(action: {
+                        searchText = ""
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+            .padding(12)
+            .background(Color(.systemGray6))
+            .cornerRadius(12)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            
+            // Additional content can be added here that will appear when the sheet is expanded
+            Spacer()
+        }
+        .background(Color.white)
     }
 }
 
@@ -452,50 +520,50 @@ struct ParkingLot: Identifiable {
 
 
 
-struct BottomSheetSearchBar: View {
-    @Binding var searchText: String
-    @Binding var showNavigationView: Bool
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Handle indicator
-          
-            
-            // Search bar
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.gray)
-                
-                Button(action: {
-                    showNavigationView = true
-                }) {
-                    HStack {
-                        Text(searchText.isEmpty ? "Search locations..." : searchText)
-                            .foregroundColor(searchText.isEmpty ? .gray : .primary)
-                        Spacer()
-                    }
-                }
-                .buttonStyle(PlainButtonStyle())
-                
-                if !searchText.isEmpty {
-                    Button(action: {
-                        self.searchText = ""
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.gray)
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-        }
-        .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(radius: 5)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 0)
-    }
-}
+//struct BottomSheetSearchBar: View {
+//    @Binding var searchText: String
+//    @Binding var showNavigationView: Bool
+//    
+//    var body: some View {
+//        VStack(spacing: 0) {
+//            // Handle indicator
+//          
+//            
+//            // Search bar
+//            HStack {
+//                Image(systemName: "magnifyingglass")
+//                    .foregroundColor(.gray)
+//                
+//                Button(action: {
+//                    showNavigationView = true
+//                }) {
+//                    HStack {
+//                        Text(searchText.isEmpty ? "Search locations..." : searchText)
+//                            .foregroundColor(searchText.isEmpty ? .gray : .primary)
+//                        Spacer()
+//                    }
+//                }
+//                .buttonStyle(PlainButtonStyle())
+//                
+//                if !searchText.isEmpty {
+//                    Button(action: {
+//                        self.searchText = ""
+//                    }) {
+//                        Image(systemName: "xmark.circle.fill")
+//                            .foregroundColor(.gray)
+//                    }
+//                }
+//            }
+//            .padding(.horizontal, 16)
+//            .padding(.vertical, 12)
+//        }
+//        .background(.thinMaterial)
+//        .clipShape(RoundedRectangle(cornerRadius: 16))
+//        .shadow(radius: 5)
+//        .padding(.horizontal, 16)
+//        .padding(.bottom, 0)
+//    }
+//}
 
 
 

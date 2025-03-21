@@ -23,6 +23,9 @@ struct HomeView: View {
     @State private var dismissCarsView = true
     @State private var showNavigationView = false
     
+    // Add reference to NotificationManager
+    @ObservedObject private var notificationManager = NotificationManager.shared
+    
     var body: some View {
         ZStack {
             MapView()
@@ -30,16 +33,25 @@ struct HomeView: View {
                 .environmentObject(mapViewModel)
                 .environmentObject(sessionService)
                 .environmentObject(groupsViewModel)
-
-    
-            
         }
   
-        .fullScreenCover(isPresented: $showNavigationView) {
+        // Update the fullScreenCover to dismiss when a notification arrives
+        .fullScreenCover(isPresented: Binding(
+            get: { showNavigationView && !notificationManager.dismissAllSheets },
+            set: { newValue in showNavigationView = newValue }
+        )) {
             CombinedNavigationView(mapViewModel: mapViewModel)
         }
+        
+        // Add the RideAcceptedView sheet
+        .sheet(isPresented: $notificationManager.showRideAcceptedView) {
+            if let requestId = notificationManager.selectedRideRequestId {
+                RideAcceptedView(requestId: requestId)
+                    .environmentObject(sessionService)
+            }
+        }
 
-   
+        // Rest of your view remains the same
         .onChange(of: carsViewModel.selectedCar) { newCar in
             DispatchQueue.main.async {
                 selectedCar = newCar
@@ -87,6 +99,17 @@ struct HomeView: View {
                 Text("Something went wrong")
             }
         }
+        
+        // Listen for notifications to dismiss sheets
+        .onChange(of: notificationManager.dismissAllSheets) { shouldDismiss in
+            if shouldDismiss {
+                showNavigationView = false
+                showAccountView = false
+                showGroupsView = false
+                showMoreSheet = false
+                showEditCar = false
+            }
+        }
     }
     
     private func refreshCars() async {
@@ -105,52 +128,52 @@ struct HomeView_Previews: PreviewProvider {
 }
 
 
-
-struct SearchBar: View {
-    @Binding var text: String
-    @State private var showNavigationView = false  // State for navigation view
-    @State private var showAccountView = false  // State for account view
-    
-    var body: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.gray)
-            
-            // Make the entire text field a button
-            Button(action: {
-                showNavigationView = true  // Show CombinedNavigationView when tapped
-            }) {
-                HStack {
-                    Text(text.isEmpty ? "Search locations..." : text)
-                        .foregroundColor(text.isEmpty ? .gray : .primary)
-                    Spacer()
-                }
-                .padding(8)
-                .background(Color.clear)
-            }
-
-            if !text.isEmpty {
-                Button(action: {
-                    self.text = ""
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.gray)
-                }
-            }
-            
-
-        }
-        .padding(8)
-        .background(Color(.systemGray6))
-        .cornerRadius(10)
-        .fullScreenCover(isPresented: $showNavigationView) {
-            CombinedNavigationView(mapViewModel: MapViewModelImpl())
-        }
-        .sheet(isPresented: $showAccountView) {
-            AccountView()  // Display AccountView when tapped
-        }
-    }
-}
+//
+//struct SearchBar: View {
+//    @Binding var text: String
+//    @State private var showNavigationView = false  // State for navigation view
+//    @State private var showAccountView = false  // State for account view
+//    
+//    var body: some View {
+//        HStack {
+//            Image(systemName: "magnifyingglass")
+//                .foregroundColor(.gray)
+//            
+//            // Make the entire text field a button
+//            Button(action: {
+//                showNavigationView = true  // Show CombinedNavigationView when tapped
+//            }) {
+//                HStack {
+//                    Text(text.isEmpty ? "Search locations..." : text)
+//                        .foregroundColor(text.isEmpty ? .gray : .primary)
+//                    Spacer()
+//                }
+//                .padding(8)
+//                .background(Color.clear)
+//            }
+//
+//            if !text.isEmpty {
+//                Button(action: {
+//                    self.text = ""
+//                }) {
+//                    Image(systemName: "xmark.circle.fill")
+//                        .foregroundColor(.gray)
+//                }
+//            }
+//            
+//
+//        }
+//        .padding(8)
+//        .background(Color(.systemGray6))
+//        .cornerRadius(10)
+//        .fullScreenCover(isPresented: $showNavigationView) {
+//            CombinedNavigationView(mapViewModel: MapViewModelImpl())
+//        }
+//        .sheet(isPresented: $showAccountView) {
+//            AccountView()  // Display AccountView when tapped
+//        }
+//    }
+//}
 
 
 
@@ -183,6 +206,271 @@ struct SearchBar2: View {
     }
 }
 
+struct SubMainView: View {
+    @Binding var searchText: String
+    @State private var selectedTab = "Park"
+
+    var body: some View {
+        VStack {
+            HStack {
+                TabButton(title: "Park", imageName: "car.circle.fill", selectedTab: $selectedTab)
+                TabButton(title: "Ride", imageName: "car.2.fill", selectedTab: $selectedTab)
+            }
+            .padding(.top, 10)
+
+          
+            
+            // Show content based on selected tab
+            if selectedTab == "Park" {
+                ParkView()
+            } else {
+                ParkView()
+            }
+            
+            Spacer()
+        }
+    }
+}
+
+
+struct ParkView: View {
+    @StateObject private var mapViewModel = MapViewModelImpl()
+    @State private var searchText = ""
+    @State private var selectedParkingLot: ParkingLot? = nil
+    @State private var showLotDetails: Bool = false
+    @State private var lotsWithCounts: [ParkingLot] = []
+    
+    // Create sample polygons as MapOverlays
+    var parkingLots: [ParkingLot] {
+        return [
+            ParkingLot(id: "lot23", name: "Lot 23", available: true, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23685, longitude: -77.42064),
+                CLLocationCoordinate2D(latitude: 37.23660, longitude: -77.42034),
+                CLLocationCoordinate2D(latitude: 37.23689, longitude: -77.41986),
+                CLLocationCoordinate2D(latitude: 37.23720, longitude: -77.42005)
+            ], color: .red),
+            ParkingLot(id: "lot25", name: "Lot 25", available: true, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23787, longitude: -77.42061),
+                CLLocationCoordinate2D(latitude: 37.23771, longitude: -77.42093),
+                CLLocationCoordinate2D(latitude: 37.23717, longitude: -77.42048),
+                CLLocationCoordinate2D(latitude: 37.23731, longitude: -77.42023)
+            ], color: .yellow),
+            ParkingLot(id: "lot26", name: "Lot 26", available: true, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23846, longitude: -77.42041),
+                CLLocationCoordinate2D(latitude: 37.23821, longitude: -77.42027),
+                CLLocationCoordinate2D(latitude: 37.23798, longitude: -77.42095),
+                CLLocationCoordinate2D(latitude: 37.23824, longitude: -77.42107)
+            ], color: .green),
+            ParkingLot(id: "lot20", name: "Lot 20", available: true, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23624, longitude: -77.42054),
+                CLLocationCoordinate2D(latitude: 37.23602, longitude: -77.42042),
+                CLLocationCoordinate2D(latitude: 37.23610, longitude: -77.42015),
+                CLLocationCoordinate2D(latitude: 37.23638, longitude: -77.42029)
+            ], color: .red),
+            ParkingLot(id: "lot22", name: "Lot 22", available: true, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23702, longitude: -77.41918),
+                CLLocationCoordinate2D(latitude: 37.23713, longitude: -77.41901),
+                CLLocationCoordinate2D(latitude: 37.23728, longitude: -77.41913),
+                CLLocationCoordinate2D(latitude: 37.23721, longitude: -77.41923),
+                CLLocationCoordinate2D(latitude: 37.23717, longitude: -77.41920),
+                CLLocationCoordinate2D(latitude: 37.23686, longitude: -77.41967),
+                CLLocationCoordinate2D(latitude: 37.23667, longitude: -77.41955),
+                CLLocationCoordinate2D(latitude: 37.23683, longitude: -77.41921)
+            ], color: .red),
+            ParkingLot(id: "lot00", name: "Lot 00", available: true, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23676, longitude: -77.41765),
+                CLLocationCoordinate2D(latitude: 37.23652, longitude: -77.41740),
+                CLLocationCoordinate2D(latitude: 37.23616, longitude: -77.41804),
+                CLLocationCoordinate2D(latitude: 37.23646, longitude: -77.41819)
+            ], color: .red),
+            ParkingLot(id: "jacplace", name: "Jac Place", available: false, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23711, longitude: -77.41709),
+                CLLocationCoordinate2D(latitude: 37.23688, longitude: -77.41687),
+                CLLocationCoordinate2D(latitude: 37.23699, longitude: -77.41669),
+                CLLocationCoordinate2D(latitude: 37.23738, longitude: -77.41670)
+            ], color: .red),
+            ParkingLot(id: "owenshall", name: "Owens Hall", available: false, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23788, longitude: -77.41684),
+                CLLocationCoordinate2D(latitude: 37.23759, longitude: -77.41776),
+                CLLocationCoordinate2D(latitude: 37.23778, longitude: -77.41787),
+                CLLocationCoordinate2D(latitude: 37.23807, longitude: -77.41692)
+            ], color: .red),
+            ParkingLot(id: "huntermac", name: "Hunter Mac", available: false, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23980, longitude: -77.41806),
+                CLLocationCoordinate2D(latitude: 37.23987, longitude: -77.41783),
+                CLLocationCoordinate2D(latitude: 37.24024, longitude: -77.41801),
+                CLLocationCoordinate2D(latitude: 37.24016, longitude: -77.41823)
+            ], color: .red),
+            ParkingLot(id: "jessehall", name: "Jesse Hall", available: false, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23945, longitude: -77.41742),
+                CLLocationCoordinate2D(latitude: 37.23896, longitude: -77.41717),
+                CLLocationCoordinate2D(latitude: 37.23909, longitude: -77.41679),
+                CLLocationCoordinate2D(latitude: 37.23942, longitude: -77.41695),
+                CLLocationCoordinate2D(latitude: 37.23953, longitude: -77.41659),
+                CLLocationCoordinate2D(latitude: 37.23912, longitude: -77.41636),
+                CLLocationCoordinate2D(latitude: 37.23918, longitude: -77.41618),
+                CLLocationCoordinate2D(latitude: 37.23960, longitude: -77.41639),
+                CLLocationCoordinate2D(latitude: 37.23992, longitude: -77.41639),
+                CLLocationCoordinate2D(latitude: 37.23993, longitude: -77.41621),
+                CLLocationCoordinate2D(latitude: 37.24009, longitude: -77.41623),
+                CLLocationCoordinate2D(latitude: 37.24009, longitude: -77.41675),
+                CLLocationCoordinate2D(latitude: 37.23972, longitude: -77.41658)
+            ], color: .red),
+            ParkingLot(id: "backlot", name: "Back Lot", available: true, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23466, longitude: -77.42005),
+                CLLocationCoordinate2D(latitude: 37.23444, longitude: -77.41991),
+                CLLocationCoordinate2D(latitude: 37.23422, longitude: -77.42057),
+                CLLocationCoordinate2D(latitude: 37.23446, longitude: -77.42065)
+            ], color: .red),
+            ParkingLot(id: "quad2", name: "Quad 2", available: true, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23619, longitude: -77.42204),
+                CLLocationCoordinate2D(latitude: 37.23574, longitude: -77.42156),
+                CLLocationCoordinate2D(latitude: 37.23559, longitude: -77.42182),
+                CLLocationCoordinate2D(latitude: 37.23602, longitude: -77.42230)
+            ], color: .red),
+            ParkingLot(id: "lot 14", name: "lot 14", available: false, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23851, longitude: -77.41717),
+                CLLocationCoordinate2D(latitude: 37.23846, longitude: -77.41735),
+                CLLocationCoordinate2D(latitude: 37.23822, longitude: -77.41724),
+                CLLocationCoordinate2D(latitude: 37.23828, longitude: -77.41705)
+            ], color: .red),
+            ParkingLot(id: "screw12", name: "Screw 12", available: true, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.23851, longitude: -77.41680),
+                CLLocationCoordinate2D(latitude: 37.23846, longitude: -77.41693),
+                CLLocationCoordinate2D(latitude: 37.23757, longitude: -77.41651),
+                CLLocationCoordinate2D(latitude: 37.23767, longitude: -77.41633),
+                CLLocationCoordinate2D(latitude: 37.23786, longitude: -77.41641),
+                CLLocationCoordinate2D(latitude: 37.23829, longitude: -77.41636),
+                CLLocationCoordinate2D(latitude: 37.23827, longitude: -77.41652),
+                CLLocationCoordinate2D(latitude: 37.23840, longitude: -77.41659),
+                CLLocationCoordinate2D(latitude: 37.23835, longitude: -77.41673),
+                CLLocationCoordinate2D(latitude: 37.23844, longitude: -77.41678)
+            ], color: .red),
+            ParkingLot(id: "agri", name: "Agriculture", available: true, coordinates: [
+                CLLocationCoordinate2D(latitude: 37.24047, longitude: -77.41776),
+                CLLocationCoordinate2D(latitude: 37.24043, longitude: -77.41790),
+                CLLocationCoordinate2D(latitude: 37.23992, longitude: -77.41766),
+                CLLocationCoordinate2D(latitude: 37.23999, longitude: -77.41746),
+                CLLocationCoordinate2D(latitude: 37.24040, longitude: -77.41767),
+                CLLocationCoordinate2D(latitude: 37.24038, longitude: -77.41773)
+            ], color: .red)
+        ]
+    }
+    
+    // Calculate centroid for annotations
+    func calculateCentroid(coordinates: [CLLocationCoordinate2D]) -> CLLocationCoordinate2D {
+        var latitude: Double = 0
+        var longitude: Double = 0
+        
+        let count = Double(coordinates.count)
+        for coordinate in coordinates {
+            latitude += coordinate.latitude
+            longitude += coordinate.longitude
+        }
+        
+        return CLLocationCoordinate2D(latitude: latitude / count, longitude: longitude / count)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+
+            
+            // List of parking lots
+            List {
+                ForEach(lotsWithCounts.isEmpty ? parkingLots : lotsWithCounts) { lot in
+                    Button {
+                        selectedParkingLot = lot
+                        showLotDetails = true
+                    } label: {
+                        HStack {
+                            Circle()
+                                .fill(lot.dynamicColor)
+                                .frame(width: 12, height: 12)
+                            
+                            VStack(alignment: .leading) {
+                                Text(lot.name)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.primary)
+                                
+                                Text("\(lot.availableSpots) of \(lot.totalSpots) spots available")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            Text(statusText(for: lot))
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(lot.dynamicColor.opacity(0.2))
+                                .foregroundColor(lot.dynamicColor)
+                                .cornerRadius(10)
+                        }
+                    }
+                }
+            }
+            .listStyle(InsetGroupedListStyle())
+        }
+        .onAppear {
+            mapViewModel.getCurrentLocation()
+            Task {
+                await mapViewModel.fetchParkingSpots()
+                // Update the lots with counts after fetching spots
+                lotsWithCounts = mapViewModel.countSpotsInLots(parkingSpots: mapViewModel.parkingSpots,
+                                                             lots: parkingLots)
+            }
+        }
+        .onChange(of: mapViewModel.parkingSpots) { _, newSpots in
+            lotsWithCounts = mapViewModel.countSpotsInLots(parkingSpots: newSpots,
+                                                         lots: parkingLots)
+        }
+        .animation(.spring(), value: showLotDetails)
+    }
+    
+    // Helper function to display status text based on availability
+    private func statusText(for lot: ParkingLot) -> String {
+        guard lot.totalSpots > 0 else { return "Unknown" }
+        
+        let ratio = Double(lot.availableSpots) / Double(lot.totalSpots)
+        
+        switch ratio {
+        case 0.75...1.0:
+            return "Many Spots"
+        case 0.5..<0.75:
+            return "Available"
+        case 0.25..<0.5:
+            return "Limited"
+        default:
+            return "Full"
+        }
+    }
+}
+
+
+// MARK: - Top Navigation Tabs
+struct TabButton: View {
+    let title: String
+    let imageName: String
+    @Binding var selectedTab: String
+    
+    var body: some View {
+        Button(action: {
+            selectedTab = title
+        }) {
+            VStack {
+                Image(systemName: imageName)
+                    .font(.system(size: 20))
+                Text(title)
+                    .font(.headline)
+            }
+            .foregroundColor(selectedTab == title ? .black : .gray)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+        }
+    }
+}
+
 
 struct CombinedNavigationView: View {
     @Environment(\.dismiss) var dismiss
@@ -194,69 +482,99 @@ struct CombinedNavigationView: View {
     @State private var showingNavigation = false
     @State private var currentRoute: MKRoute?
     @State private var isMapReady = false
-    @State private var showingTurnByTurnNavigation = false  // New state variable
+    @State private var showingTurnByTurnNavigation = false
+    @State private var showingWalletView = false
+    @State private var showPointAlert = false
+    @State private var showMarketMessage = false
+    @State private var alertMessage = ""
+    @State private var selectedTab: String = "Park"
     
-    // Add these properties to handle initial destination
-      private var initialDestination: CLLocationCoordinate2D?
-      private var destinationName: String?
-      
-    
+    @ObservedObject private var notificationManager = NotificationManager.shared
+    @StateObject private var userViewModel = UserViewModel()
+
+    private var initialDestination: CLLocationCoordinate2D?
+    private var destinationName: String?
+
     struct LocationResult: Identifiable {
         let id = UUID()
         let title: String
         let subtitle: String
         let coordinate: CLLocationCoordinate2D
     }
-    
+
     init(mapViewModel: MapViewModelImpl = MapViewModelImpl(),
-           initialDestination: CLLocationCoordinate2D? = nil,
-           destinationName: String? = nil) {
-          _mapViewModel = StateObject(wrappedValue: mapViewModel)
-          self.initialDestination = initialDestination
-          self.destinationName = destinationName
-      }
-    
+         initialDestination: CLLocationCoordinate2D? = nil,
+         destinationName: String? = nil) {
+        _mapViewModel = StateObject(wrappedValue: mapViewModel)
+        self.initialDestination = initialDestination
+        self.destinationName = destinationName
+    }
+
     var body: some View {
-        ZStack {
-            // Map layer
-            if isMapReady {
-                LocationMapView(route: currentRoute,
-                              destination: selectedLocation?.coordinate ??
-                                         CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194))
-                    .edgesIgnoringSafeArea(.all)
-                    .opacity(showingNavigation ? 1 : 0)
-            }
-            
-            // UI Layer
+        ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
-                // Search header
+                // Top tabs
                 HStack {
-                    Button(action: {
-                        if showingNavigation {
+//                    Button(action: {
+//                        dismiss()
+//                    }) {
+//                        Image(systemName: "chevron.left")
+//                            .foregroundColor(.primary)
+//                            .padding()
+//                    }
+//                    
+//                    Spacer()
+                    
+                    // Tab buttons
+                    HStack(spacing: 0) {
+                        TabButton(title: "Park", imageName: "parkingsign", selectedTab: $selectedTab)
+                        TabButton(title: "Requests", imageName: "car", selectedTab: $selectedTab)
+                    }
+                    .padding(4)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
+                    
+//                    Spacer()
+//                    
+//                    Button(action: {
+//                        dismiss()
+//                    }) {
+//                        Image(systemName: "chevron.left")
+//                            .foregroundColor(.primary)
+//                            .padding()
+//                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                
+                // Search bar
+                if !showingNavigation {
+                    SearchBar2(text: $searchText) {}
+                        .padding(.horizontal)
+                        .padding(.bottom, 8)
+                } else if let location = selectedLocation {
+                    HStack {
+                        Button(action: {
                             showingNavigation = false
                             selectedLocation = nil
                             currentRoute = nil
-                        } else {
-                            dismiss()
+                        }) {
+                            Image(systemName: "chevron.left")
+                                .foregroundColor(.primary)
+                                .padding()
                         }
-                    }) {
-                        Image(systemName: showingNavigation ? "chevron.left" : "xmark")
-                            .foregroundColor(.primary)
-                            .padding()
-                    }
-                    
-                    if !showingNavigation {
-                        SearchBar2(text: $searchText) {}
-                            .padding(.trailing)
-                    } else if let location = selectedLocation {
+                        
                         Text(location.title)
                             .font(.headline)
+                        
                         Spacer()
                     }
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
                 }
-                .background(Color(.systemBackground))
                 
-                if !showingNavigation {
+                // Main content
+                if !searchText.isEmpty && !showingNavigation {
                     // Search results
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
@@ -270,7 +588,7 @@ struct CombinedNavigationView: View {
                                         Image(systemName: "mappin.circle.fill")
                                             .foregroundColor(.blue)
                                             .font(.title2)
-                                        
+
                                         VStack(alignment: .leading) {
                                             Text(result.title)
                                                 .foregroundColor(.primary)
@@ -279,7 +597,7 @@ struct CombinedNavigationView: View {
                                                 .foregroundColor(.gray)
                                                 .font(.subheadline)
                                         }
-                                        
+
                                         Spacer()
                                     }
                                     .padding()
@@ -288,55 +606,132 @@ struct CombinedNavigationView: View {
                             }
                         }
                     }
-                } else {
-                    Spacer()
-                    
-                    // Navigation controls
-                    if let route = currentRoute {
-                        VStack(spacing: 16) {
-                            HStack {
-                                Text("\(Int(route.expectedTravelTime / 60)) min")
-                                    .font(.title)
-                                    .fontWeight(.bold)
-                                
-                                Text("\(String(format: "%.1f", route.distance / 1609.34)) mi")
-                                    .foregroundColor(.gray)
+                } else if showingNavigation {
+                    // Navigation view
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            // Map in RoundedRectangle
+                            if isMapReady {
+                                ZStack(alignment: .bottom) {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color(.systemBackground))
+                                        .shadow(radius: 3)
+                                        .overlay(
+                                            LocationMapView(route: currentRoute,
+                                                          destination: selectedLocation?.coordinate ??
+                                                                     CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194))
+                                                .cornerRadius(12)
+                                        )
+                                    
+                                    // Overlay: Travel Time & Distance at the Bottom
+                                    if let route = currentRoute {
+                                        HStack {
+                                            Text("\(Int(route.expectedTravelTime / 60)) min")
+                                                .font(.title2)
+                                                .fontWeight(.bold)
+                                                .foregroundColor(.white)
+
+                                            Text("\(String(format: "%.1f", route.distance / 1609.34)) mi")
+                                                .foregroundColor(.white)
+                                        }
+                                        .padding()
+                                        .background(Color.black.opacity(0.7))
+                                        .cornerRadius(10)
+                                        .padding(.bottom, 10)
+                                    }
+                                }
+                                .frame(height: UIScreen.main.bounds.height * 0.4)
+                                .padding()
                             }
-                            .padding()
-                            .background(Color(.systemBackground))
-                            .cornerRadius(12)
                             
-                            HStack(spacing: 16) {
-                                Button(action: { /* Leave later functionality */ }) {
-                                    Text("Leave later")
-                                        .foregroundColor(.blue)
-                                        .padding()
-                                        .frame(maxWidth: .infinity)
-                                        .background(Color(.systemBackground))
-                                        .cornerRadius(12)
-                                }
-                                
-                                Button(action: {
-                                    showingTurnByTurnNavigation = true
-                                }) {
-                                    Text("Go now")
-                                        .foregroundColor(.white)
-                                        .padding()
-                                        .frame(maxWidth: .infinity)
-                                        .background(Color.blue)
-                                        .cornerRadius(12)
-                                }
+                            // SameDestinationRequestsView
+                            if let destination = selectedLocation?.coordinate {
+                                SameDestinationRequestsView(userSelectedDestination: destination)
+                                    .frame(height: 300)
+                                    .cornerRadius(12)
+                                    .padding(.horizontal)
                             }
+                            
+                            // Add spacing to ensure content scrolls above the navigation controls
+                            Spacer().frame(height: 130)
                         }
-                        .padding()
                     }
+                } else {
+                    // Default tab content
+                    TabView(selection: $selectedTab) {
+                        // Park tab content
+                        ParkView()
+                            .tag("Park")
+                        
+                        // Ride tab content
+                        DriverRideRequestsView()
+                            .tag("Requests")
+                    }
+                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                 }
             }
+            
+            // Fixed navigation controls at the bottom
+            if showingNavigation, let route = currentRoute {
+                VStack(spacing: 16) {
+                    HStack(spacing: 16) {
+                        Button(action: {
+                            if userViewModel.points < 20 {
+                                alertMessage = "You need at least 20 points to use the Find Ride feature."
+                                showPointAlert = true
+                            } else {
+                                showMarketMessage = true
+                            }
+                        }) {
+                            Text("Find a ride")
+                                .foregroundColor(.blue)
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color(.systemBackground))
+                                .cornerRadius(12)
+                        }
+
+                        Button(action: {
+                            showingTurnByTurnNavigation = true
+                        }) {
+                            Text("Go now")
+                                .foregroundColor(.white)
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color.blue)
+                                .cornerRadius(12)
+                        }
+                    }
+                }
+                .padding()
+                .background(
+                    Rectangle()
+                        .fill(Color(.systemBackground))
+                        .shadow(radius: 5, y: -3)
+                )
+            }
+        }
+        .fullScreenCover(isPresented: $showMarketMessage) {
+            FindARideView(destination: selectedLocation?.coordinate, route: currentRoute)
+                .environmentObject(TipsStore())
+        }
+        .fullScreenCover(isPresented: $showingWalletView) {
+            AddMoneyWalletView().environmentObject(TipsStore())
         }
         .fullScreenCover(isPresented: $showingTurnByTurnNavigation) {
             if let route = currentRoute {
                 TurnByTurnNavigationView(route: route)
             }
+        }
+        .alert(isPresented: $showPointAlert) {
+            Alert(
+                title: Text("Insufficient Points"),
+                message: Text(alertMessage),
+                primaryButton: .default(Text("OK")) {
+                    showingWalletView = true
+                },
+                secondaryButton: .cancel()
+            )
         }
         .onChange(of: searchText) { newValue in
             if !newValue.isEmpty {
@@ -345,45 +740,43 @@ struct CombinedNavigationView: View {
                 searchResults = []
             }
         }
-      
-        
         .onAppear {
-                    locationManager.requestLocationAuthorization()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        isMapReady = true
-                        
-                        // If we have an initial destination, set it up automatically
-                        if let destination = initialDestination, let name = destinationName {
-                            let result = LocationResult(
-                                title: name,
-                                subtitle: "Parking Lot",
-                                coordinate: destination
-                            )
-                            selectedLocation = result
-                            showingNavigation = true
-                            calculateRoute(to: destination)
-                        } else {
-                            // Default search if no destination provided
-                            searchForLocations(query: "university")
-                        }
-                    }
-                }
+            locationManager.requestLocationAuthorization()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                isMapReady = true
 
-    
+                // If we have an initial destination, set it up automatically
+                if let destination = initialDestination, let name = destinationName {
+                    let result = LocationResult(
+                        title: name,
+                        subtitle: "Parking Lot",
+                        coordinate: destination
+                    )
+                    selectedLocation = result
+                    showingNavigation = true
+                    calculateRoute(to: destination)
+                }
+            }
+        }
+        .onChange(of: notificationManager.dismissAllSheets) { shouldDismiss in
+            if shouldDismiss {
+                dismiss()
+            }
+        }
     }
-    
+
     private func searchForLocations(query: String) {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
-        
+
         let userLocation = locationManager.location?.coordinate ??
             CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194) // Default to SF
-        
+
         request.region = MKCoordinateRegion(
             center: userLocation,
             span: MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
         )
-        
+
         let search = MKLocalSearch(request: request)
         search.start { response, error in
             if let response = response {
@@ -400,32 +793,788 @@ struct CombinedNavigationView: View {
         }
     }
 
-    
     private func calculateRoute(to destination: CLLocationCoordinate2D) {
-            let request = MKDirections.Request()
-            
-            if let userLocation = locationManager.location?.coordinate {
-                request.source = MKMapItem(placemark: MKPlacemark(coordinate: userLocation))
-            } else {
-                let defaultLocation = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
-                request.source = MKMapItem(placemark: MKPlacemark(coordinate: defaultLocation))
+        let request = MKDirections.Request()
+
+        if let userLocation = locationManager.location?.coordinate {
+            request.source = MKMapItem(placemark: MKPlacemark(coordinate: userLocation))
+        } else {
+            let defaultLocation = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+            request.source = MKMapItem(placemark: MKPlacemark(coordinate: defaultLocation))
+        }
+
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
+        request.transportType = .automobile
+        request.requestsAlternateRoutes = true
+
+        MKDirections(request: request).calculate { response, error in
+            DispatchQueue.main.async {
+                if let routes = response?.routes {
+                    let shortestRoute = routes.min(by: { $0.distance < $1.distance })
+                    self.currentRoute = shortestRoute
+                }
             }
+        }
+    }
+}
+
+// RideView placeholder - implement this view for ride-sharing functionality
+struct RideView: View {
+    var body: some View {
+        VStack {
+            Text("Ride Sharing")
+                .font(.title)
+                .padding()
             
-            request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
-            request.transportType = .automobile
-            // Request multiple routes
-            request.requestsAlternateRoutes = true
+            Text("Find rides to your destination")
+                .foregroundColor(.secondary)
             
-            MKDirections(request: request).calculate { response, error in
-                DispatchQueue.main.async {
-                    if let routes = response?.routes {
-                        // Find the shortest route by distance
-                        let shortestRoute = routes.min(by: { $0.distance < $1.distance })
-                        self.currentRoute = shortestRoute
+            Spacer()
+        }
+    }
+}
+
+
+struct SameDestinationRequestsView: View {
+    @Environment(\.dismiss) var dismiss
+    @StateObject private var locationManager = LocationManager()
+    @State private var rideRequests: [RideRequest] = []
+    @State private var isLoading = true
+    @State private var errorMessage: String? = nil
+    @State private var showError = false
+    @State private var selectedRequest: RideRequest? = nil
+    @State private var showingRequestDetail = false
+    @State private var selectedDestination: GeoPoint? = nil
+    @State private var destinationOptions: [DestinationOption] = []
+    @State private var currentPage = 0
+
+    var userSelectedDestination: CLLocationCoordinate2D?
+    
+    struct DestinationOption: Identifiable {
+        let id = UUID()
+        let destination: GeoPoint
+        let displayName: String
+        let count: Int
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                
+                    
+                    Spacer()
+                    Text("Select a tag along")
+                    Spacer()
+                
+                }
+                .padding(.horizontal)
+                .background(Color(.systemBackground))
+                
+                // Content
+                if isLoading {
+                    Spacer()
+                    ProgressView("Loading ride requests...")
+                    Spacer()
+                } else if selectedDestination == nil {
+                    Spacer()
+                    VStack(spacing: 16) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.system(size: 50))
+                            .foregroundColor(.gray)
+                        Text("Select a destination")
+                            .font(.headline)
+                        Text("Choose from common destinations above")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                    }
+                    Spacer()
+                } else if filteredRequests.isEmpty {
+                    Spacer()
+                    VStack(spacing: 16) {
+                        Image(systemName: "car.fill")
+                            .font(.system(size: 50))
+                            .foregroundColor(.gray)
+                        Text("No matching ride requests")
+                            .font(.headline)
+                        Text("No one is currently requesting a ride to this destination")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                    }
+                    Spacer()
+                } else {
+
+                    VStack {
+                        TabView(selection: $currentPage) {
+                            ForEach(filteredRequests.indices, id: \.self) { index in
+                                rideRequestCard(filteredRequests[index])
+                                    .onTapGesture {
+                                        selectedRequest = filteredRequests[index]
+                                        showingRequestDetail = true
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .tag(index) // Assign tag for tracking
+                            }
+                        }
+                        .frame(height: 250)
+                        .tabViewStyle(.page)
+
+                        // Page Indicator
+                        if filteredRequests.count > 1 {
+                            HStack {
+                                ForEach(0..<filteredRequests.count, id: \.self) { index in
+                                    Circle()
+                                        .fill(currentPage == index ? Color.blue : Color.gray.opacity(0.5))
+                                        .frame(width: 8, height: 8)
+                                }
+                            }
+                            .padding(.top, 2)
+                        }
+                    }
+                    .onChange(of: currentPage) { _ in
+                        // Update logic if needed when the page changes
+                    }
+
+
+                    .refreshable {
+                        loadRideRequests()
+                    }
+
+                }
+            }
+            .navigationBarHidden(true)
+            .alert(isPresented: $showError) {
+                Alert(title: Text("Error"), message: Text(errorMessage ?? "An unknown error occurred"), dismissButton: .default(Text("OK")))
+            }
+            .sheet(isPresented: $showingRequestDetail) {
+                if let request = selectedRequest {
+                    RideRequestDetailView(request: request)
+                }
+            }
+            .onAppear {
+                // Request location permission when view appears
+                locationManager.requestLocationAuthorization()
+                // Give location services a moment to initialize before loading requests
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    loadRideRequests()
+                    
+                    // If a destination was passed, try to set it as the filter
+                    if let userDest = userSelectedDestination {
+                        // Convert CLLocationCoordinate2D to GeoPoint for comparison
+                        let userDestGeoPoint = GeoPoint(latitude: userDest.latitude, longitude: userDest.longitude)
+                        
+                        // First try to find an exact match
+                        if let matchingOption = destinationOptions.first(where: {
+                            isEqualLocation($0.destination, userDestGeoPoint)
+                        }) {
+                            selectedDestination = matchingOption.destination
+                        } else if !destinationOptions.isEmpty {
+                            // If no exact match, find the closest destination
+                            selectedDestination = findClosestDestination(to: userDest)
+                        }
                     }
                 }
             }
         }
+    }
+    
+
+    
+    private func destinationButton(_ option: DestinationOption) -> some View {
+        Button(action: {
+            if selectedDestination != nil && isEqualLocation(selectedDestination!, option.destination) {
+                // Deselect if already selected
+                selectedDestination = nil
+            } else {
+                selectedDestination = option.destination
+            }
+        }) {
+            HStack {
+                Text(option.displayName)
+                    .font(.subheadline)
+                
+                Text("\(option.count)")
+                    .font(.caption)
+                    .padding(5)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .clipShape(Circle())
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                selectedDestination != nil && isEqualLocation(selectedDestination!, option.destination)
+                ? Color.blue
+                : Color.blue.opacity(0.1)
+            )
+            .foregroundColor(
+                selectedDestination != nil && isEqualLocation(selectedDestination!, option.destination)
+                ? .white
+                : .blue
+            )
+            .cornerRadius(20)
+        }
+    }
+    
+    private var filteredRequests: [RideRequest] {
+        guard let selectedDestination = selectedDestination else {
+            return []
+        }
+        
+        return rideRequests.filter { request in
+            isEqualLocation(request.destination, selectedDestination)
+        }.sorted { request1, request2 in
+            if let userLocation = locationManager.location {
+                let dist1 = calculateDistance(from: userLocation.coordinate, to: request1.pickupCoordinate)
+                let dist2 = calculateDistance(from: userLocation.coordinate, to: request2.pickupCoordinate)
+                return dist1 < dist2
+            }
+            return request1.timestamp > request2.timestamp
+        }
+    }
+    
+    private func rideRequestCard(_ request: RideRequest) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Top row with points and distance
+            HStack(alignment: .top) {
+                Text("\(request.pointsOffered) points")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.blue)
+                    .cornerRadius(8)
+                
+            }
+            
+            // Route details
+            HStack(alignment: .top) {
+                VStack {
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 8, height: 8)
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.5))
+                        .frame(width: 2, height: 84)
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                }
+                .padding(.top, 4)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        
+                        HStack {
+                            Text("Pickup Location")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            if let userLocation = locationManager.location {
+                                // Distance to pickup location
+                                let pickupDistance = calculateDistance(from: userLocation.coordinate, to: request.pickupCoordinate)
+                                Text(String(format: "%.1f mi away", pickupDistance))
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                                                      
+                            }
+                        }
+                     
+                        
+                        
+                        Text(request.pickupAddress?.components(separatedBy: ",").first ?? "Loading pickup address...")
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                        
+                        if let fullAddress = request.pickupAddress, let firstComma = fullAddress.firstIndex(of: ",") {
+                            Text(String(fullAddress[fullAddress.index(after: firstComma)...]).trimmingCharacters(in: .whitespaces))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 3) {
+                        
+                        HStack {
+                            
+                            Text("Destination")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            // Distance between driver's destination and rider's destination
+                            if let userDestination = userSelectedDestination {
+                                let destinationDistance = calculateDistance(from: userDestination, to: request.destinationCoordinate)
+                                Text(String(format: "%.1f mi from yours", destinationDistance))
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                      
+                        
+                        Text(request.destinationAddress?.components(separatedBy: ",").first ?? "Loading destination address...")
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                        
+                        if let fullAddress = request.destinationAddress, let firstComma = fullAddress.firstIndex(of: ",") {
+                            Text(String(fullAddress[fullAddress.index(after: firstComma)...]).trimmingCharacters(in: .whitespaces))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .padding(.leading, 8)
+
+                
+                Spacer()
+             
+            }
+            
+            // Rider name
+            Text("Rider: \(request.riderName)")
+                .font(.subheadline)
+                .foregroundColor(.gray)
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(12)
+    }
+    
+    let addressManager = AddressManager()
+    
+    private func loadRideRequests() {
+        guard let userLocation = locationManager.location else {
+            errorMessage = "Unable to get your location."
+            showError = true
+            return
+        }
+        
+        isLoading = true
+        let db = Firestore.firestore()
+        
+        db.collection("rideRequests")
+            .whereField("status", isEqualTo: "pending")
+            .getDocuments { snapshot, error in
+                isLoading = false
+                
+                if let error = error {
+                    errorMessage = "Failed to load ride requests: \(error.localizedDescription)"
+                    showError = true
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    self.rideRequests = []
+                    self.destinationOptions = []
+                    return
+                }
+                
+                // Parse ride requests
+                let requests = documents.compactMap { document -> RideRequest? in
+                    guard let userId = document.data()["userId"] as? String,
+                          let riderName = document.data()["riderName"] as? String,
+                          let pickupLocation = document.data()["pickupLocation"] as? GeoPoint,
+                          let destination = document.data()["destination"] as? GeoPoint,
+                          let timestamp = document.data()["timestamp"] as? Timestamp,
+                          let status = document.data()["status"] as? String,
+                          let pointsOffered = document.data()["pointsOffered"] as? Int,
+                          let estimatedDistance = document.data()["estimatedDistance"] as? Double,
+                          let estimatedDuration = document.data()["estimatedDuration"] as? Double else {
+                        return nil
+                    }
+                    
+                    return RideRequest(
+                        id: document.documentID,
+                        userId: userId,
+                        riderName: riderName,
+                        pickupLocation: pickupLocation,
+                        destination: destination,
+                        timestamp: timestamp.dateValue(),
+                        status: status,
+                        pointsOffered: pointsOffered,
+                        estimatedDistance: estimatedDistance,
+                        estimatedDuration: estimatedDuration
+                    )
+                }
+                
+                self.rideRequests = requests
+                
+                // Generate destination options
+                var destinationCounts: [String: (GeoPoint, Int)] = [:]
+                var destinationNames: [String: String] = [:]
+                
+                for index in requests.indices {
+                              addressManager.fetchAddress(for: requests[index].pickupCoordinate) { address in
+                                  DispatchQueue.main.async {
+                                      self.rideRequests[index].pickupAddress = address ?? "Unknown Address"
+                                  }
+                              }
+                              
+                              addressManager.fetchAddress(for: requests[index].destinationCoordinate) { address in
+                                  DispatchQueue.main.async {
+                                      self.rideRequests[index].destinationAddress = address ?? "Unknown Address"
+                                  }
+                              }
+                          }
+                
+                // This would ideally come from a geocoder, but for now use a simple approach
+                for request in requests {
+                    let key = "\(request.destination.latitude),\(request.destination.longitude)"
+                    
+                    if let existing = destinationCounts[key] {
+                        destinationCounts[key] = (existing.0, existing.1 + 1)
+                    } else {
+                        destinationCounts[key] = (request.destination, 1)
+                        
+                        // Generate a simple name based on coordinate
+                        // In a real app, you'd use reverse geocoding to get actual names
+                        let lat = request.destination.latitude
+                        let lng = request.destination.longitude
+                        destinationNames[key] = String(format: "Destination %.2f,%.2f", lat, lng)
+                    }
+                }
+                
+                // Convert to options
+                self.destinationOptions = destinationCounts.map { key, value in
+                    DestinationOption(
+                        destination: value.0,
+                        displayName: destinationNames[key] ?? "Unknown",
+                        count: value.1
+                    )
+                }
+                .sorted { $0.count > $1.count }
+                
+                // Reset selection if needed
+                if let userDest = userSelectedDestination {
+                    let userDestGeoPoint = GeoPoint(latitude: userDest.latitude, longitude: userDest.longitude)
+                    
+                    // First try to find an exact match
+                    if let matchingOption = self.destinationOptions.first(where: {
+                        isEqualLocation($0.destination, userDestGeoPoint)
+                    }) {
+                        self.selectedDestination = matchingOption.destination
+                    } else if !self.destinationOptions.isEmpty {
+                        // If no exact match, find the closest destination
+                        self.selectedDestination = findClosestDestination(to: userDest)
+                    }
+                }
+            }
+    }
+    
+    private func findClosestDestination(to coordinate: CLLocationCoordinate2D) -> GeoPoint? {
+        guard !destinationOptions.isEmpty else { return nil }
+        
+        let targetLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        
+        // Sort destinations by distance to the target coordinate
+        let sortedDestinations = destinationOptions.sorted { option1, option2 in
+            let location1 = CLLocation(latitude: option1.destination.latitude, longitude: option1.destination.longitude)
+            let location2 = CLLocation(latitude: option2.destination.latitude, longitude: option2.destination.longitude)
+            
+            return location1.distance(from: targetLocation) < location2.distance(from: targetLocation)
+        }
+        
+        // Return the closest destination
+        return sortedDestinations.first?.destination
+    }
+    
+    private func isEqualLocation(_ geoPoint1: GeoPoint, _ geoPoint2: GeoPoint) -> Bool {
+        // Consider locations equal if they are within ~10 meters
+        let tolerance = 0.0001 // Roughly 10 meters at the equator
+        return abs(geoPoint1.latitude - geoPoint2.latitude) < tolerance &&
+               abs(geoPoint1.longitude - geoPoint2.longitude) < tolerance
+    }
+    
+    private func calculateDistance(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> Double {
+        let fromLocation = CLLocation(latitude: from.latitude, longitude: from.longitude)
+        let toLocation = CLLocation(latitude: to.latitude, longitude: to.longitude)
+        let distanceInMeters = fromLocation.distance(from: toLocation)
+        return distanceInMeters / 1609.34 // Convert to miles
+    }
+    
+    private func timeAgoString(from date: Date) -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        let components = calendar.dateComponents([.minute, .hour, .day], from: date, to: now)
+        
+        if let day = components.day, day > 0 {
+            return "\(day)d ago"
+        } else if let hour = components.hour, hour > 0 {
+            return "\(hour)h ago"
+        } else if let minute = components.minute, minute > 0 {
+            return "\(minute)m ago"
+        } else {
+            return "Just now"
+        }
+    }
+}
+//import SwiftUI
+//
+//struct FindARideView: View {
+//    @Environment(\.dismiss) var dismiss
+//
+//    var body: some View {
+//        VStack {
+//            // X button at the top right
+//            HStack {
+//                Spacer() // Pushes the button to the right
+//                Button(action: {
+//                    dismiss()
+//                }) {
+//                    Image(systemName: "xmark")
+//                        .font(.title2)
+//                        .foregroundColor(.black)
+//                        .padding()
+//                }
+//            }
+//            .padding(.trailing) // Add some right padding
+//
+//            Spacer()
+//            
+//            Text("Payment Methods View")
+//                .font(.title)
+//            
+//            Spacer()
+//        }
+//        .padding(.top) // Add padding to push content down
+//        .background(Color.white.edgesIgnoringSafeArea(.all))
+//    }
+//}
+
+
+
+import SwiftUI
+
+struct AddMoneyWalletView: View {
+    @StateObject private var userViewModel = UserViewModel() // Use the ViewModel to fetch points and user info
+    @EnvironmentObject private var store: TipsStore
+    @State private var showSubscriptionView = false
+    @State private var showThanks = false
+    @Environment(\.presentationMode) private var presentationMode  // To dismiss the view
+
+    var body: some View {
+        VStack(spacing: 20) {
+            // Dismiss Button (X) above Available Points
+            HStack {
+                Spacer()
+                Button(action: {
+                    presentationMode.wrappedValue.dismiss()  // Dismiss the view
+                }) {
+                    Image(systemName: "xmark")
+                        .foregroundColor(.black)
+                        .font(.title)
+                }
+            }
+            .padding(.trailing)
+
+            // Main content
+            Text("Available Points")
+                .font(.headline)
+                .foregroundColor(.gray)
+            
+            // Bind the real points from UserViewModel
+            Text("\(userViewModel.points, specifier: "%.2f")")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+                .foregroundColor(.black)
+            
+            // Card View
+            ZStack {
+                RoundedRectangle(cornerRadius: 15)
+                    .fill(Color.black.opacity(0.3))
+                    .frame(height: 200)
+                    .shadow(radius: 5)
+                
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Image(systemName: "creditcard.fill")
+                            .foregroundColor(.red)
+                        Spacer()
+                        Text("**** **** **** ****")
+                            .foregroundColor(.white)
+                            .font(.headline)
+                    }
+                    Spacer()
+                    VStack(alignment: .leading) {
+                        Text("Card Holder")
+                            .font(.caption)
+                            .foregroundColor(.black)
+                        // Display the full name here
+                        Text("\(userViewModel.firstName) \(userViewModel.lastName)")
+                            .foregroundColor(.white)
+                            .fontWeight(.bold)
+                    }
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text("Exp Date")
+                                .font(.caption)
+                                .foregroundColor(.black)
+                            Text("∞")
+                                .foregroundColor(.white)
+                                .fontWeight(.bold)
+                        }
+                        Spacer()
+                    }
+                }
+                .padding()
+            }
+            .frame(height: 140)
+            
+            Button(action: {
+                showSubscriptionView.toggle()
+            }) {
+                Text("+ Add More Points")
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(RoundedRectangle(cornerRadius: 10).stroke(Color.black, lineWidth: 1))
+            }
+            .padding(.horizontal)
+            
+            // Transactions Section
+            VStack(alignment: .leading) {
+                Text("Transactions")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                List {
+                    TransactionRow(title: "Central Parking", amount: -25)
+                    TransactionRow(title: "ABC Parking", amount: -35)
+                }
+                .listStyle(PlainListStyle())
+                .frame(height: 160)
+            }
+        }
+        .padding()
+        .background(Color.white.edgesIgnoringSafeArea(.all))
+        .overlay {
+            if showSubscriptionView {
+                Color.black.opacity(0.8)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        showSubscriptionView.toggle()
+                    }
+                subscriptionView
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            if showThanks {
+                thankYouView
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(), value: showSubscriptionView)
+        .animation(.spring(), value: showThanks)
+        .onChange(of: store.action) { action in
+            if action == .successful {
+                showSubscriptionView = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    showThanks.toggle()
+                }
+                store.reset()
+            }
+        }
+        .alert(isPresented: $store.hasError, error: store.error) { }
+    }
+}
+
+
+
+
+private extension AddMoneyWalletView {
+    var subscriptionView: some View {
+        VStack(spacing: 8) {
+            Text("Add More Points")
+                .font(.system(.title2, design: .rounded).bold())
+                .multilineTextAlignment(.center)
+            
+            Button {
+                showRewardedAd()
+            } label: {
+                HStack {
+                    Text("Watch Ad for Points")
+                    Image(systemName: "video.fill")
+                        .foregroundColor(.yellow)
+                }
+                .font(.system(.title3, design: .rounded).bold())
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color.blue.opacity(0.8))
+                .foregroundColor(.white)
+                .cornerRadius(10)
+            }
+
+            ForEach(store.items) { item in
+                configureProductVw(item)
+            }
+        }
+        .padding(16)
+        .background(Color("card-background"), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(8)
+    }
+
+    // Function to trigger the ad
+    func showRewardedAd() {
+        // Call your ad SDK to show a rewarded ad
+        // Example for AdMob:
+//        RewardedAdService.shared.showAd { success in
+//            if success {
+//                store.addPoints(10) // Example: Grant 10 points
+//            }
+//        }
+    }
+
+    
+    var thankYouView: some View {
+        VStack(spacing: 8) {
+            Text("Thank You 💕")
+                .font(.system(.title2, design: .rounded).bold())
+                .multilineTextAlignment(.center)
+            
+            Text("Your purchase was successful. Enjoy your points!")
+                .font(.system(.body, design: .rounded))
+                .multilineTextAlignment(.center)
+                .padding(.bottom, 16)
+            
+            Button {
+                showThanks.toggle()
+            } label: {
+                Text("Close")
+                    .font(.system(.title3, design: .rounded).bold())
+                    .tint(.white)
+                    .frame(height: 55)
+                    .frame(maxWidth: .infinity)
+                    .background(.blue, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        }
+        .padding(16)
+        .background(Color("card-background"), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 8)
+    }
+    
+    func configureProductVw(_ item: Product) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.displayName)
+                    .font(.system(.title3, design: .rounded).bold())
+                Text(item.description)
+                    .font(.system(.callout, design: .rounded).weight(.regular))
+            }
+            Spacer()
+            Button(item.displayPrice) {
+                Task {
+                    await store.purchase(item)
+                }
+            }
+            .tint(.blue)
+            .buttonStyle(.bordered)
+            .font(.callout.bold())
+        }
+        .padding(16)
+        .background(Color("cell-background"), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
 }
 
 
@@ -942,6 +2091,7 @@ import Combine
 import FirebaseFirestore
 
 import FirebaseAuth
+import StoreKit
 
 // Enhanced Navigation Manager with Firebase Parking functionality
 class NavigationManager: NSObject, ObservableObject {
